@@ -287,29 +287,3 @@ class Flow(object):
             self.unacknowledged_packets[packet_id] = self.start_time + packet_id * 0.001
             heapq.heappush(self.network.event_queue, ReceivePacketEvent(self.start_time + packet_id * 0.001, packet, self.source_host))
             # TODO change the one packet per second protocol
-
-
-
-
-
-
-if __name__ == "__main__":
-
-    n = Network()
-
-    n.add_host("h1")
-    n.add_host("h2")
-
-    n.add_link("l1", n.node_dict["h1"], n.node_dict["h2"], 64 * 1000 * 8, 10 * 10**6, 0.01)
-
-    n.add_flow("f1", n.node_dict["h1"], n.node_dict["h2"], 1024 * 8 * 3, 1, None)
-
-
-    # setup the routing table for h1
-    n.node_dict["h1"].routing_table["h2"] = n.link_dict["l1"]
-
-    # setup the routing table for h2
-    n.node_dict["h2"].routing_table["h1"] = n.link_dict["l1"]
-
-
-    n.event_loop()
