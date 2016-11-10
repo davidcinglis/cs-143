@@ -26,13 +26,13 @@ class Network(object):
 
 
 
-    def add_host(self, node_id):
-        self.node_dict[node_id] = Host(node_id)
-        self.node_dict[node_id].network = self
+    def add_host(self, node):
+        self.node_dict[node.node_id] = node
+        node.network = self
 
-    def add_router(self, node_id):
-        self.node_dict[node_id] = Router(node_id)
-        self.node_dict[node_id].network = self
+    def add_router(self, node):
+        self.node_dict[node.node_id] = node
+        node.network = self
 
     def add_link(self, link_id, node_1, node_2, buffer_size, capacity, delay):
         self.link_dict[link_id] = Link(link_id, node_1, node_2, buffer_size, capacity, delay)
@@ -202,7 +202,7 @@ class Host(object):
 
 class Router(object):
     """docstring for Router."""
-    def __init__(self, id):
+    def __init__(self, node_id):
         super(Router, self).__init__()
         self.node_id = node_id
         # self.routing_table = routing_table
