@@ -8,6 +8,7 @@ import heapq
 
 DATA_PACKET_SIZE = 1024 * 8
 ACK_PACKET_SIZE = 64 * 8
+WINDOW_SIZE = 20
 
 class Network(object):
     """docstring for Network."""
@@ -17,6 +18,8 @@ class Network(object):
         self.node_dict = dict()
         self.link_dict = dict()
         self.flow_dict = dict()
+
+        self.active_flows = 0
 
         self.event_queue = []
 
@@ -43,6 +46,9 @@ class Network(object):
         self.flow_dict[flow_id].setup()
 
     def event_loop(self):
+
+        self.active_flows = len(self.flow_dict)
+
         while self.event_queue:
             self.event_queue = sorted(self.event_queue, key=lambda x: x.timestamp, reverse=True)
             #print [e.timestamp for e in self.event_queue]
@@ -62,6 +68,13 @@ class Event(object):
 
     def __cmp__(self, other):
         return self.timestamp - other.timestamp
+
+
+# class AnalyticsEvent(Event):
+#     """docstring for AnalyticsEvent."""
+#     def __init__(self, timestamp):
+#         super(AnalyticsEvent, self).__init__(timestamp)
+#         self.arg = arg
 
 
 
@@ -107,26 +120,57 @@ class EnterBufferEvent(Event):
         elif self.link.node_2 == self.current_node:
             self.next_node = self.link.node_1
         else:
-            raise ValueError("Fuck dude")
+            raise ValueError("Node not in link")
 
 
     def handle(self):
         if self.link.available_space - self.packet.size >= 0:
             self.link.available_space -= self.packet.size
+            self.link.buffer_occupancy_history[self.timestamp] = self.link.available_space
 
-            if self.link.next_available_time == None:
-                reception_time = self.timestamp + float(self.packet.size) / self.link.capacity + self.link.delay
+            if self.link.next_send_time == None: # If the buffer is empty
+                send_time = self.timestamp
             else:
-                reception_time = max(self.link.next_available_time, self.timestamp) + float(self.packet.size) / self.link.capacity + self.link.delay
+                send_time = max(self.link.next_send_time, self.timestamp)
 
-            rcpe = ReceivePacketEvent(reception_time, self.packet, self.next_node)
-            self.link.next_available_time = reception_time
+            lbe = LeaveBufferEvent(send_time, self.packet, self.link, self.current_node)
 
-            heapq.heappush(self.link.network.event_queue, rcpe)
+            self.link.next_send_time = send_time + float(self.packet.size) / self.link.capacity + self.link.delay
+
+            heapq.heappush(self.link.network.event_queue, lbe)
+        else:
+            self.link.packets_lost_history.append(self.timestamp)
 
     def print_event_description(self):
         print "Timestamp:", self.timestamp, "Packet", self.packet.packet_id, "(", self.packet.source.node_id, "->", self.packet.destination.node_id, ")", "entering buffer at node", self.current_node.node_id, "(link", self.link.link_id, ")"
 
+
+
+class LeaveBufferEvent(Event):
+    """docstring for LeaveBufferEvent."""
+    def __init__(self, timestamp, packet, link, current_node):
+        super(LeaveBufferEvent, self).__init__(timestamp)
+        self.packet = packet
+        self.link = link
+        self.current_node = current_node
+        if self.link.node_1 == self.current_node:
+            self.next_node = self.link.node_2
+        elif self.link.node_2 == self.current_node:
+            self.next_node = self.link.node_1
+        else:
+            raise ValueError("Node not in link")
+
+    def handle(self):
+        self.link.available_space += self.packet.size
+        self.link.buffer_occupancy_history[self.timestamp] = self.link.available_space
+        self.link.flow_rate_history[self.timestamp] = self.packet.size
+
+        rcpe = ReceivePacketEvent(self.timestamp + float(self.packet.size) / self.link.capacity + self.link.delay, self.packet, self.next_node)
+
+        heapq.heappush(self.link.network.event_queue, rcpe)
+
+    def print_event_description(self):
+        print "Timestamp:", self.timestamp, "Packet", self.packet.packet_id, "(", self.packet.source.node_id, "->", self.packet.destination.node_id, ")", "leaving buffer at node", self.current_node.node_id, "(link", self.link.link_id, ")"
 
 class PacketAcknowledgementEvent(Event):
     """docstring for PacketAcknowledgementEvent."""
@@ -137,7 +181,10 @@ class PacketAcknowledgementEvent(Event):
         self.flow = flow
 
     def handle(self):
-        self.flow.unacknowledged_packet_ids.remove(self.packet.packet_id)
+        send_time = self.flow.unacknowledged_packets[self.packet.packet_id]
+        round_trip_time = self.timestamp - send_time
+        self.flow.round_trip_time_history[send_time] = round_trip_time #TODO should this key be receive time
+        del self.flow.unacknowledged_packets[self.packet.packet_id]
         # TODO send more packets?
 
     def print_event_description(self):
@@ -169,7 +216,14 @@ class Link(object):
         self.node_1 = node_1
         self.node_2 = node_2
 
-        self.next_available_time = None
+        # Array of all times we lost a packet
+        self.packets_lost_history = []
+        # Dict of timestamps at which the buffer changed to the buffer occupancy it had at that time
+        self.buffer_occupancy_history = {}
+        # Dict from times to amount of information sent at that time
+        self.flow_rate_history = {}
+
+        self.next_send_time = None
         self.buffer_size = buffer_size
 
         self.capacity = capacity
@@ -213,12 +267,15 @@ class Flow(object):
         self.source_host = source_host
         self.destination_host = destination_host
 
+        # Map from received packet ids to their round trip times
+        self.round_trip_time_history = {}
+
         self.payload_size = payload_size
         self.start_time = start_time
-        self.unacknowledged_packet_ids = set()
+        self.unacknowledged_packets = {} # map from packet_ids to the times at which they were sent
 
     def congestion_control_algorithm(self):
-        return True
+        return WINDOW_SIZE # TODO Jagriti and Nikita will reimplement this
 
     def setup(self):
 
@@ -227,9 +284,9 @@ class Flow(object):
         for packet_id in range(num_packets):
 
             packet = DataPacket(packet_id, self.source_host, self.destination_host)
-            self.unacknowledged_packet_ids.add(packet_id)
-            heapq.heappush(self.network.event_queue, ReceivePacketEvent(self.start_time + packet_id, packet, self.source_host))
-            # TODO fix the one packet per second protocol
+            self.unacknowledged_packets[packet_id] = self.start_time + packet_id * 0.001
+            heapq.heappush(self.network.event_queue, ReceivePacketEvent(self.start_time + packet_id * 0.001, packet, self.source_host))
+            # TODO change the one packet per second protocol
 
 
 
