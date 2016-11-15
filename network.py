@@ -205,7 +205,7 @@ class Router(object):
     def __init__(self, node_id):
         super(Router, self).__init__()
         self.node_id = node_id
-        # self.routing_table = routing_table
+        self.routing_table = {}
 
 
 class Link(object):

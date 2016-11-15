@@ -16,7 +16,7 @@ def run_test_case_0_lite():
 
     # Adds link l1 from h1 to h2. Link has buffer 64 KB, 10 Mbps capacity, 10 ms delay
     n.add_link("l1", h1, h2, 64 * 1000 * 8, 10 * 10**6, 10 * 10**-3)
-    # Adds flow f1 from h1 to h2. Flow has payload 3 packets, starts at t=1, no congestion control.
+    # Adds flow f1 from h1 to h2. Flow has payload 5000 packets, starts at t=1, no congestion control.
     n.add_flow("f1", h1, h2, DATA_PACKET_SIZE * 5000, 1, None)
 
 
@@ -109,7 +109,22 @@ def run_test_case_1():
     # setup the routing table for h2
     h2.routing_table["h1"] = n.link_dict["l5"]
 
-    # Setup the routing tables for the routers
+    # Setup the routing tables for r1
+    r1.routing_table["h1"] = n.link_dict["l0"]
+    r1.routing_table["h2"] = n.link_dict["l1"]
+
+    # Setup the routing tables for r2
+    r2.routing_table["h1"] = n.link_dict["l1"]
+    r2.routing_table["h2"] = n.link_dict["l3"]
+
+    # Setup the routing tables for r3
+    r3.routing_table["h1"] = n.link_dict["l2"]
+    r3.routing_table["h2"] = n.link_dict["l4"]
+
+    # Setup the routing tables for r4
+    r4.routing_table["h1"] = n.link_dict["l4"]
+    r4.routing_table["h2"] = n.link_dict["l5"]
+
 
 
     n.event_loop()
@@ -185,4 +200,4 @@ def run_test_case_2():
 
 
 if __name__ == '__main__':
-    run_test_case_0_lite()
+    run_test_case_1()
