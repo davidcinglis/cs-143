@@ -13,7 +13,7 @@ def plot_buffer_occupancy(link):
   """
   timestamps = [tup[0] for tup in link.buffer_occupancy_history]
   space_values = [tup[1] for tup in link.buffer_occupancy_history]
-  plt.scatter(timestamps, space_values)
+  plt.plot(timestamps, space_values)
   plt.xlabel('time (seconds)')
   plt.ylabel('available space (bits)')
   plt.show()

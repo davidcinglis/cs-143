@@ -1,10 +1,6 @@
 
-import heapq
-
-
-
 # This file contains all the classes and methods for the basic network architecture
-
+import heapq
 
 DATA_PACKET_SIZE = 1024 * 8
 ACK_PACKET_SIZE = 64 * 8
@@ -21,10 +17,7 @@ class Network(object):
 
         self.active_flows = 0
 
-        self.event_queue = []
-
-
-
+        self.event_queue = EventQueue()
 
     def add_host(self, node):
         self.node_dict[node.node_id] = node
@@ -49,14 +42,22 @@ class Network(object):
 
         self.active_flows = len(self.flow_dict)
 
-        while self.event_queue:
-            self.event_queue = sorted(self.event_queue, key=lambda x: x.timestamp, reverse=True)
-            #print [e.timestamp for e in self.event_queue]
+        while self.event_queue.queue:
             event = self.event_queue.pop()
             event.handle()
             event.print_event_description()
 
 
+
+class EventQueue(object):
+    def __init__(self):
+        self.queue = []
+
+    def push(self, event):
+        heapq.heappush(self.queue, (event.timestamp, event))
+
+    def pop(self):
+        return heapq.heappop(self.queue)[1]
 
 
 
@@ -91,15 +92,16 @@ class ReceivePacketEvent(Event):
         if self.packet.destination == self.receiving_node:
             if isinstance(self.packet, DataPacket):
                 ack = AcknowledgementPacket(self.packet.packet_id, self.packet.destination, self.packet.source)
-                heapq.heappush(self.receiving_node.network.event_queue, ReceivePacketEvent(self.timestamp, ack, self.receiving_node))
+                self.receiving_node.network.event_queue.push(ReceivePacketEvent(self.timestamp, ack, self.receiving_node))
             elif isinstance(self.packet, AcknowledgementPacket):
                 flow = self.receiving_node.flow
                 e = PacketAcknowledgementEvent(self.timestamp, self.packet, flow)
-                heapq.heappush(self.receiving_node.network.event_queue, e)
+                self.receiving_node.network.event_queue.push(e)
         else:
             next_link = self.receiving_node.routing_table[self.packet.destination.node_id]
             assert isinstance(next_link, Link)
-            heapq.heappush(self.receiving_node.network.event_queue, EnterBufferEvent(self.timestamp, self.packet, next_link, self.receiving_node))
+            e = EnterBufferEvent(self.timestamp, self.packet, next_link, self.receiving_node)
+            self.receiving_node.network.event_queue.push(e)
 
 
 
@@ -137,7 +139,7 @@ class EnterBufferEvent(Event):
 
             self.link.next_send_time = send_time + float(self.packet.size) / self.link.capacity + self.link.delay
 
-            heapq.heappush(self.link.network.event_queue, lbe)
+            self.link.network.event_queue.push(lbe)
         else:
             self.link.packets_lost_history.append(self.timestamp)
 
@@ -167,7 +169,8 @@ class LeaveBufferEvent(Event):
 
         rcpe = ReceivePacketEvent(self.timestamp + float(self.packet.size) / self.link.capacity + self.link.delay, self.packet, self.next_node)
 
-        heapq.heappush(self.link.network.event_queue, rcpe)
+
+        self.link.network.event_queue.push(rcpe)
 
     def print_event_description(self):
         print "Timestamp:", self.timestamp, "Packet", self.packet.packet_id, "(", self.packet.source.node_id, "->", self.packet.destination.node_id, ")", "leaving buffer at node", self.current_node.node_id, "(link", self.link.link_id, ")"
@@ -289,5 +292,5 @@ class Flow(object):
             send_time = self.start_time + packet_id * 0.001
             self.unacknowledged_packets[packet_id] = send_time
             self.flow_rate_history.append((send_time, DATA_PACKET_SIZE))
-            heapq.heappush(self.network.event_queue, ReceivePacketEvent(send_time, packet, self.source_host))
+            self.network.event_queue.push(ReceivePacketEvent(send_time, packet, self.source_host))
             # TODO change the one packet per second protocol
