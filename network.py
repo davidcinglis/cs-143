@@ -126,7 +126,7 @@ class EnterBufferEvent(Event):
     def handle(self):
         if self.link.available_space - self.packet.size >= 0:
             self.link.available_space -= self.packet.size
-            self.link.buffer_occupancy_history[self.timestamp] = self.link.available_space
+            self.link.buffer_occupancy_history.append((self.timestamp, self.link.available_space))
 
             if self.link.next_send_time == None: # If the buffer is empty
                 send_time = self.timestamp
@@ -162,8 +162,8 @@ class LeaveBufferEvent(Event):
 
     def handle(self):
         self.link.available_space += self.packet.size
-        self.link.buffer_occupancy_history[self.timestamp] = self.link.available_space
-        self.link.flow_rate_history[self.timestamp] = self.packet.size
+        self.link.buffer_occupancy_history.append((self.timestamp, self.link.available_space))
+        self.link.link_rate_history.append((self.timestamp, self.packet.size))
 
         rcpe = ReceivePacketEvent(self.timestamp + float(self.packet.size) / self.link.capacity + self.link.delay, self.packet, self.next_node)
 
@@ -218,10 +218,10 @@ class Link(object):
 
         # Array of all times we lost a packet
         self.packets_lost_history = []
-        # Dict of timestamps at which the buffer changed to the buffer occupancy it had at that time
-        self.buffer_occupancy_history = {}
+        # Array of timestamps, size tuples corresponding to the available space in the buffer at that timestamp
+        self.buffer_occupancy_history = []
         # Dict from times to amount of information sent at that time
-        self.flow_rate_history = {}
+        self.link_rate_history = []
 
         self.next_send_time = None
         self.buffer_size = buffer_size
@@ -274,6 +274,8 @@ class Flow(object):
         self.start_time = start_time
         self.unacknowledged_packets = {} # map from packet_ids to the times at which they were sent
 
+        self.flow_rate_history = []
+
     def congestion_control_algorithm(self):
         return WINDOW_SIZE # TODO Jagriti and Nikita will reimplement this
 
@@ -284,6 +286,8 @@ class Flow(object):
         for packet_id in range(num_packets):
 
             packet = DataPacket(packet_id, self.source_host, self.destination_host)
-            self.unacknowledged_packets[packet_id] = self.start_time + packet_id * 0.001
-            heapq.heappush(self.network.event_queue, ReceivePacketEvent(self.start_time + packet_id * 0.001, packet, self.source_host))
+            send_time = self.start_time + packet_id * 0.001
+            self.unacknowledged_packets[packet_id] = send_time
+            self.flow_rate_history.append((send_time, DATA_PACKET_SIZE))
+            heapq.heappush(self.network.event_queue, ReceivePacketEvent(send_time, packet, self.source_host))
             # TODO change the one packet per second protocol

@@ -1,6 +1,7 @@
 
 
 from network import *
+from logging import *
 
 
 def run_test_case_0_lite():
@@ -16,7 +17,7 @@ def run_test_case_0_lite():
     # Adds link l1 from h1 to h2. Link has buffer 64 KB, 10 Mbps capacity, 10 ms delay
     n.add_link("l1", h1, h2, 64 * 1000 * 8, 10 * 10**6, 10 * 10**-3)
     # Adds flow f1 from h1 to h2. Flow has payload 3 packets, starts at t=1, no congestion control.
-    n.add_flow("f1", h1, h2, DATA_PACKET_SIZE * 3, 1, None)
+    n.add_flow("f1", h1, h2, DATA_PACKET_SIZE * 5000, 1, None)
 
 
     # setup the routing table for h1
@@ -26,6 +27,15 @@ def run_test_case_0_lite():
     h2.routing_table["h1"] = n.link_dict["l1"]
 
     n.event_loop()
+
+    for flow in n.flow_dict:
+        plot_flow_rate(n.flow_dict[flow])
+
+    for link in n.link_dict:
+        plot_buffer_occupancy(n.link_dict[link])
+        plot_packet_loss(n.link_dict[link])
+        plot_link_rate(n.link_dict[link])
+
 
 
 def run_test_case_0():
