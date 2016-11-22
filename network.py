@@ -42,22 +42,23 @@ class Network(object):
 
         self.active_flows = len(self.flow_dict)
 
-        while self.event_queue.queue:
+        while not self.event_queue.is_empty():
             event = self.event_queue.pop()
             event.handle()
             event.print_event_description()
 
-
-
 class EventQueue(object):
     def __init__(self):
-        self.queue = []
+        self._queue = []
 
     def push(self, event):
-        heapq.heappush(self.queue, (event.timestamp, event))
+        heapq.heappush(self._queue, (event.timestamp, event))
 
     def pop(self):
-        return heapq.heappop(self.queue)[1]
+        return heapq.heappop(self._queue)[1]
+
+    def is_empty(self):
+        return len(self._queue) == 0
 
 
 
@@ -186,7 +187,7 @@ class PacketAcknowledgementEvent(Event):
     def handle(self):
         send_time = self.flow.unacknowledged_packets[self.packet.packet_id]
         round_trip_time = self.timestamp - send_time
-        self.flow.round_trip_time_history[send_time] = round_trip_time #TODO should this key be receive time
+        self.flow.round_trip_time_history.append((send_time, round_trip_time)) #TODO should this key be receive time
         del self.flow.unacknowledged_packets[self.packet.packet_id]
         # TODO send more packets?
 
@@ -271,7 +272,7 @@ class Flow(object):
         self.destination_host = destination_host
 
         # Map from received packet ids to their round trip times
-        self.round_trip_time_history = {}
+        self.round_trip_time_history = []
 
         self.payload_size = payload_size
         self.start_time = start_time

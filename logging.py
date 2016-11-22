@@ -59,7 +59,7 @@ def plot_link_rate(link):
       bytes_sent += link.link_rate_history[idx][1]
       idx += 1
 
-    flow_rate_values.append(bytes_sent / 0.5)
+    flow_rate_values.append(bytes_sent / 0.25)
 
   # plot the intervals
   plt.plot(intervals, flow_rate_values)
@@ -88,10 +88,39 @@ def plot_flow_rate(flow):
       bytes_sent += flow.flow_rate_history[idx][1]
       idx += 1
 
-    flow_rate_values.append(bytes_sent / 0.5)
+    flow_rate_values.append(bytes_sent / 0.25)
 
   # plot the intervals
   plt.plot(intervals, flow_rate_values)
   plt.xlabel('time (seconds)')
   plt.ylabel('flow rate (bits/sec)')
+  plt.show()
+
+def plot_round_trip_time(flow):
+  timestamps = [tup[0] for tup in flow.round_trip_time_history]
+  max_time = math.ceil(max(timestamps))
+
+  # creates quarter-second intervals
+  intervals = numpy.linspace(0, max_time, max_time * 4)
+
+  # place each transmission into the appropriate interval
+  rtt_values = []
+  idx = 0
+  for i in range(len(intervals)):
+    sum = 0
+    count = 0
+    while idx < len(flow.flow_rate_history) and flow.flow_rate_history[idx][0] <= intervals[i]:
+      count += 1
+      sum += flow.flow_rate_history[idx][1]
+      idx += 1
+
+    if count > 0:
+      rtt_values.append(sum * 1.0 / count)
+    else:
+      rtt_values.append(0)
+
+  # plot the intervals
+  plt.plot(intervals, rtt_values)
+  plt.xlabel('time (seconds)')
+  plt.ylabel('avg round trip time (secs)')
   plt.show()

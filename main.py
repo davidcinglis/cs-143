@@ -30,6 +30,7 @@ def run_test_case_0_lite():
 
     for flow in n.flow_dict:
         plot_flow_rate(n.flow_dict[flow])
+        plot_round_trip_time(n.flow_dict[flow])
 
     for link in n.link_dict:
         plot_buffer_occupancy(n.link_dict[link])
@@ -125,9 +126,15 @@ def run_test_case_1():
     r4.routing_table["h1"] = n.link_dict["l4"]
     r4.routing_table["h2"] = n.link_dict["l5"]
 
-
-
     n.event_loop()
+
+    for flow in n.flow_dict:
+        plot_flow_rate(n.flow_dict[flow])
+        plot_round_trip_time(n.flow_dict[flow])
+
+    for link in n.link_dict:
+        plot_packet_loss(n.link_dict[link])
+        plot_link_rate(n.link_dict[link])
 
 
 
@@ -200,4 +207,4 @@ def run_test_case_2():
 
 
 if __name__ == '__main__':
-    run_test_case_1()
+    run_test_case_0_lite()
