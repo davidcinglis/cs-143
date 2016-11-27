@@ -26,9 +26,6 @@ class Network(object):
 
         self.event_queue = []
 
-
-
-
     def add_host(self, node):
         self.node_dict[node.node_id] = node
         node.network = self
@@ -53,6 +50,7 @@ class Network(object):
         self.active_flows = len(self.flow_dict)
         # while event queue is not empty, pop and handle event
         while self.event_queue:
+
             self.event_queue = sorted(self.event_queue, key=lambda x: x.timestamp, reverse=True)
             event = self.event_queue.pop()
             global TIME
@@ -61,6 +59,7 @@ class Network(object):
                 TIME = event.timestamp
             event.handle()
             event.print_event_description()
+
 
 
 
@@ -91,25 +90,53 @@ class ReceivePacketEvent(Event):
         if self.packet.destination == self.receiving_node:
             # if the packet is a data packet, create an acknowledgement and push an event to receive the acknowledgement
             if isinstance(self.packet, DataPacket):
-                print "CREATING ACK", "\n\n\n\n"
-                print self.packet.packet_id
+                print "CREATING ACK", self.packet.packet_id
                 # retrieve flow id
                 f_id = self.packet.packet_id[0:2]
                 # retrieve packet id
-                p_id = self.packet.packet_id[3:]
+                p_id = int(self.packet.packet_id[3:])
                 # if we've never received anything from this flow
-                if (f_id not in self.receiving_node.next_exp):
+                if (f_id not in self.receiving_node.rec_pkts):
                     # then expect to receive the first packet
-                    self.receiving_node.next_exp[f_id] = 0
-                # get id of packet that we're expecting next
-                new_id = f_id + "_" + str(self.receiving_node.next_exp[f_id])
+                    #print "Received packets:", self.receiving_node.rec_pkts[f_id]
+                    self.receiving_node.rec_pkts[f_id] = []
+                    self.receiving_node.next_expected[f_id] = 0
+
+                # if we haven't already received this packet, add it to the list of rceived packets
+                # for this flow
+                if p_id not in self.receiving_node.rec_pkts[f_id]:
+                    self.receiving_node.rec_pkts[f_id].append(p_id)
+                
+                # sort the receiving packets in ascending order
+                self.receiving_node.rec_pkts[f_id].sort()
+
+                new_id = -1
+                if p_id == self.receiving_node.next_expected[f_id]:
+                    new_id = f_id + "_" + str(self.receiving_node.next_expected[f_id])
+
+                for p_id in self.receiving_node.rec_pkts[f_id]:
+                    # packet we are on is not the one are expecting, so keep looking 
+                    if p_id < self.receiving_node.next_expected[f_id]:
+                        continue
+                    # if we have received the expected packet, increment value of expected packet
+                    elif p_id == self.receiving_node.next_expected[f_id]:
+                        self.receiving_node.next_expected[f_id] += 1
+                    else:
+                        break
+
+                # ** check this 
+                # current packet is the expected one
+                if new_id == -1:
+                    new_id = f_id + "_" + str(self.receiving_node.next_expected[f_id])
+
                 # create an ack packet
                 ack = AcknowledgementPacket(new_id, self.packet.destination, self.packet.source)
                 # push an event to receive the ack
                 heapq.heappush(self.receiving_node.network.event_queue, ReceivePacketEvent(self.timestamp, ack, self.receiving_node))
-                # if the expected packet is the current packet, expect the next packet
-                if (self.receiving_node.next_exp[f_id] == int(p_id)):
-                    self.receiving_node.next_exp[f_id] += 1
+               
+                print "Received packets:", self.receiving_node.rec_pkts[f_id]
+                print "Expected packet:", self.receiving_node.next_expected[f_id]
+
 
             # if packet is an ack
             elif isinstance(self.packet, AcknowledgementPacket):
@@ -162,8 +189,7 @@ class EnterBufferEvent(Event):
 
             heapq.heappush(self.link.network.event_queue, lbe)
         else:
-            print "PACKET LOST HAAAALP: " + str(self.packet.packet_id)
-            print "\n\n"
+            
             self.link.packets_lost_history.append(self.timestamp)
 
 
@@ -211,7 +237,6 @@ class PacketAcknowledgementEvent(Event):
             send_time = self.flow.unacknowledged_packets[self.packet.packet_id]
             round_trip_time = self.timestamp - send_time
             self.flow.round_trip_time_history[send_time] = round_trip_time #TODO should this key be receive time
-            del self.flow.unacknowledged_packets[self.packet.packet_id]
             
         self.flow.congestion_control_algorithm(self.packet.packet_id)
         # TODO send more packets?
@@ -226,14 +251,20 @@ class TimeoutEvent(Event):
         self.flow = flow
 
     def handle(self):
-        packet_num = self.packet.packet_id[3:]
+        packet_num = int(self.packet.packet_id[3:])
+        print "TIMEOUT EVENT OCCURRING", packet_num
+        
+        # if timeout acually happens
         if self.packet.packet_id  in self.flow.unacknowledged_packets:
-            print "TIMEOUT EVENT OCCURRING"
-            
-            self.flow.WINDOW_SIZE = max(self.flow.WINDOW_SIZE / 2.0, 1.0)
-            print "\n\n", self.flow.WINDOW_SIZE
-            heapq.heappush(self.flow.unpushed, packet_num)
+            del self.flow.unacknowledged_packets[self.packet.packet_id]
+            #self.flow.WINDOW_SIZE = max(self.flow.WINDOW_SIZE / 2.0, 1.0)
 
+            # reset the window size to 1 
+            self.flow.WINDOW_SIZE = 1
+            self.THRESHOLD = self.flow.WINDOW_SIZE / 2.0
+            heapq.heappush(self.flow.unpushed, packet_num)
+            self.flow.send()
+        
     def print_event_description(self):
         print "Timestamp:", self.timestamp, "flow", self.flow.flow_id, "checking timeout for packet", self.packet.packet_id
 
@@ -245,7 +276,8 @@ class Host(object):
         self.routing_table = {}
 
         # For a given flow, this gives the id of the next expected packet.
-        self.next_exp = {}
+        self.next_expected = {}
+        self.rec_pkts = dict()
 
 
 class Router(object):
@@ -275,7 +307,7 @@ class Link(object):
         self.buffer_size = buffer_size
 
         self.capacity = capacity
-        self.available_space = capacity
+        self.available_space = buffer_size
 
         
 
@@ -306,8 +338,6 @@ class AcknowledgementPacket(Packet):
 
 
 
-
-
 class Flow(object):
     """docstring for Flow."""
     def __init__(self, flow_id, source_host, destination_host, payload_size, start_time, congestion_control_algorithm):
@@ -326,45 +356,66 @@ class Flow(object):
         self.unpushed = []
         self.flow_rate_history = []
         self.WINDOW_SIZE = 20
+        self.THRESHOLD = 64
         self.prev_ack = [-1, -1, -1]
 
-        self.bytes_sent = 0
+
+    def slow_start(self):
+        self.WINDOW_SIZE += 1
+
+    def cong_avoid(self):
+        self.WINDOW_SIZE += 1 / self.WINDOW_SIZE
 
 
     def congestion_control_algorithm(self, packet_id):
+
+        num_packets = self.payload_size / DATA_PACKET_SIZE
+        print "calling congestion control alg"
+
+        temp_unack = self.unacknowledged_packets.keys()
+        for p in temp_unack:
+            if int(p[3:]) <= int(packet_id[3:]):
+                del self.unacknowledged_packets[p]
+
         # shift last two elements to be first two
         global TIME 
         for i in range(2):
             self.prev_ack[i] = self.prev_ack[i + 1]
         # replace last element with new ack
         self.prev_ack[2] = packet_id
-        print self.prev_ack
 
+        # if triple ack occurs
         if self.prev_ack[0] == self.prev_ack[1] and self.prev_ack[1] == self.prev_ack[2]:
             print "packet triple ack on id: " + str(self.prev_ack)
+            # cut threshold to half
+            self.THRESHOLD = self.WINDOW_SIZE / 2
             self.WINDOW_SIZE = max(self.WINDOW_SIZE / 2.0, 1.0)
             TIME = TIME + .001
-            self.unacknowledged_packets[packet_id] = TIME
-            packet = DataPacket(packet_id, self.source_host, self.destination_host)
-            heapq.heappush(self.network.event_queue, ReceivePacketEvent(TIME, packet, self.source_host))
+            if int(packet_id[3:]) < num_packets and int(packet_id[3:]) not in self.unpushed:
+                heapq.heappush(self.unpushed, int(packet_id[3:]))
 
         else:
-            self.WINDOW_SIZE = self.WINDOW_SIZE + 1.0 / self.WINDOW_SIZE
-            self.bytes_sent -= 1024
+            if self.WINDOW_SIZE <= self.THRESHOLD:
+                self.slow_start()
+            else:
+                self.cong_avoid()
+            #self.WINDOW_SIZE = self.WINDOW_SIZE + 1.0 / self.WINDOW_SIZE
 
-        print "WINDOW SIZE:", self.WINDOW_SIZE
+        self.send()
+
+    def send(self):
+        global TIME
+        self.unpushed.sort(reverse = True)
+        
         while (len(self.unacknowledged_packets) < self.WINDOW_SIZE) and self.unpushed:
+
             TIME = TIME + .001
             packet_num = self.unpushed.pop()
             packet_id = str(self.flow_id) + "_" + str(packet_num)
-
-
-            self.bytes_sent += 1024
-
             self.unacknowledged_packets[packet_id] = TIME
             packet = DataPacket(packet_id, self.source_host, self.destination_host)
             heapq.heappush(self.network.event_queue, ReceivePacketEvent(TIME, packet, self.source_host))
-
+            heapq.heappush(self.network.event_queue, TimeoutEvent(TIME + TIMEOUT, packet, self))
 
 
     def setup(self):
@@ -377,21 +428,4 @@ class Flow(object):
             
             heapq.heappush(self.unpushed, packet_id)
 
-        self.unpushed = sorted(self.unpushed, reverse=True)
-
-
-        for packet in range(self.WINDOW_SIZE):
-            # need to figure out delay
-            packet_num= self.unpushed.pop()
-
-            packet_id = str(self.flow_id) + "_" + str(packet_num)
-            packet = DataPacket(packet_id, self.source_host, self.destination_host)
-            #send_time = self.start_time + packet_id * 0.001
-            # find some way of delaying flow
-            send_time = self.start_time + int(packet_id[3:]) * .001 
-            self.unacknowledged_packets[packet_id] = send_time
-            #self.acknowledged_packets[packet_id] = 0
-            self.flow_rate_history.append((send_time, DATA_PACKET_SIZE))
-            heapq.heappush(self.network.event_queue, ReceivePacketEvent(send_time, packet, self.source_host))
-            heapq.heappush(self.network.event_queue, TimeoutEvent(send_time + TIMEOUT, packet, self))
-            # TODO change the one packet per second protocol
+        self.send()
