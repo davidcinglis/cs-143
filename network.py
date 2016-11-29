@@ -223,8 +223,8 @@ class LeaveBufferEvent(Event):
         heapq.heappush(self.link.network.event_queue, rcpe)
 
     def print_event_description(self):
-        print "Timestamp:", self.timestamp, "Packet", self.packet.packet_id, "(", self.packet.source.node_id, "->", self.packet.destination.node_id, ")", "leaving buffer at node", self.current_node.node_id, "(link", self.link.link_id, ")"
-
+        #print "Timestamp:", self.timestamp, "Packet", self.packet.packet_id, "(", self.packet.source.node_id, "->", self.packet.destination.node_id, ")", "leaving buffer at node", self.current_node.node_id, "(link", self.link.link_id, ")"
+        pass
 class PacketAcknowledgementEvent(Event):
     """docstring for PacketAcknowledgementEvent."""
     def __init__(self, timestamp, packet, flow):
@@ -236,9 +236,15 @@ class PacketAcknowledgementEvent(Event):
         if self.packet.packet_id in self.flow.unacknowledged_packets:
             send_time = self.flow.unacknowledged_packets[self.packet.packet_id]
             round_trip_time = self.timestamp - send_time
-            self.flow.round_trip_time_history[send_time] = round_trip_time #TODO should this key be receive time
-            
-        self.flow.congestion_control_algorithm(self.packet.packet_id)
+            print "Timestamp\n\n", self.timestamp, send_time
+            print self.packet.packet_id
+            self.flow.round_trip_time_history[self.packet.packet_id] = round_trip_time
+            if round_trip_time < self.flow.baseRTT:
+                self.flow.baseRTT = round_trip_time
+            #self.flow.round_trip_time_history[send_time] = round_trip_time #TODO should this key be receive time
+            #print self.flow.round_trip_time_history
+
+        self.flow.congestion_control_algorithm2(self.packet.packet_id)
         # TODO send more packets?
 
     def print_event_description(self):
@@ -358,6 +364,7 @@ class Flow(object):
         self.WINDOW_SIZE = 20
         self.THRESHOLD = 64
         self.prev_ack = [-1, -1, -1]
+        self.baseRTT = 1000
 
 
     def slow_start(self):
@@ -403,19 +410,65 @@ class Flow(object):
 
         self.send()
 
-    def send(self):
+
+    def congestion_control_algorithm2(self, packet_id):
+
+        num_packets = self.payload_size / DATA_PACKET_SIZE
+        print "calling congestion control alg"
+
+        temp_unack = self.unacknowledged_packets.keys()
+        for p in temp_unack:
+            if int(p[3:]) <= int(packet_id[3:]):
+                del self.unacknowledged_packets[p]
+
+        # shift last two elements to be first two
+        global TIME 
+        for i in range(2):
+            self.prev_ack[i] = self.prev_ack[i + 1]
+        # replace last element with new ack
+        self.prev_ack[2] = packet_id
+
+        # if triple ack occurs
+        if self.prev_ack[1] == self.prev_ack[2]:
+            print "packet triple ack on id: " + str(self.prev_ack)
+            self.WINDOW_SIZE = max(self.WINDOW_SIZE / 2.0, 1.0)
+            TIME = TIME + .001
+            if int(packet_id[3:]) < num_packets and int(packet_id[3:]) not in self.unpushed:
+                heapq.heappush(self.unpushed, int(packet_id[3:]))
+
+
+
+        else:
+            print self.round_trip_time_history
+            curr_rtt = self.round_trip_time_history[packet_id]
+            gamma = 0.5
+            alpha = 15
+            w = self.WINDOW_SIZE
+            self.WINDOW_SIZE = min(2 * w, (1 - gamma) * w + gamma * ((self.baseRTT / curr_rtt) * w + alpha))
+
+
+            
+            
+            #self.WINDOW_SIZE = self.WINDOW_SIZE + 1.0 / self.WINDOW_SIZE
+
+        self.send()
+
+
+
+
+    def send(self, delay = 0):
         global TIME
         self.unpushed.sort(reverse = True)
         
         while (len(self.unacknowledged_packets) < self.WINDOW_SIZE) and self.unpushed:
 
-            TIME = TIME + .001
+            TIME = TIME + .001 + delay
             packet_num = self.unpushed.pop()
             packet_id = str(self.flow_id) + "_" + str(packet_num)
             self.unacknowledged_packets[packet_id] = TIME
             packet = DataPacket(packet_id, self.source_host, self.destination_host)
             heapq.heappush(self.network.event_queue, ReceivePacketEvent(TIME, packet, self.source_host))
-            heapq.heappush(self.network.event_queue, TimeoutEvent(TIME + TIMEOUT, packet, self))
+            #heapq.heappush(self.network.event_queue, TimeoutEvent(TIME + TIMEOUT, packet, self))
 
 
     def setup(self):
@@ -428,4 +481,4 @@ class Flow(object):
             
             heapq.heappush(self.unpushed, packet_id)
 
-        self.send()
+        self.send(self.start_time)
