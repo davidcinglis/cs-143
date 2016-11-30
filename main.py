@@ -102,7 +102,7 @@ def run_test_case_1():
 
 
     # Adds flow f1 from h1 to h2. Flow has payload 20MB, starts at t=0.5, no congestion control.
-    n.add_flow("f1", h1, h2, DATA_PACKET_SIZE * 1000, 0.5, None)
+    n.add_flow("f1", h1, h2, DATA_PACKET_SIZE * 1000, 0.5, "fast")
     # n.add_flow("f1", h1, h2, 20 * 10**6 * 8, 0.5, None)
 
 

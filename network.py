@@ -160,6 +160,7 @@ class ReceivePacketEvent(Event):
                     new_id = f_id + "_" + str(self.receiving_node.next_expected[f_id])
 
                 # create an ack packet
+                print "NEW_ID", new_id, p_id
                 ack = AcknowledgementPacket(new_id, self.packet.destination, self.packet.source)
                 # push an event to receive the ack
                 self.receiving_node.network.event_queue.push(ReceivePacketEvent(self.timestamp, ack, self.receiving_node))
@@ -263,8 +264,8 @@ class PacketAcknowledgementEvent(Event):
         self.flow = flow
 
     def handle(self):
-        if self.packet.packet_id in self.flow.unacknowledged_packets:
-            send_time = self.flow.unacknowledged_packets[self.packet.packet_id]
+        if self.packet.packet_id in self.flow.pushed_packets:
+            send_time = self.flow.pushed_packets[self.packet.packet_id]
             round_trip_time = self.timestamp - send_time
             print "Timestamp\n\n", self.timestamp, send_time
             print self.packet.packet_id
@@ -272,7 +273,10 @@ class PacketAcknowledgementEvent(Event):
             if round_trip_time < self.flow.baseRTT:
                 self.flow.baseRTT = round_trip_time
 
-        self.flow.congestion_control_algorithm2(self.packet.packet_id)
+        if self.flow.alg_type == "reno":
+            self.flow.reno(self.packet.packet_id)
+        else:
+            self.flow.fast(self.packet.packet_id)
 
     def print_event_description(self):
         print "Timestamp:", self.timestamp, "flow", self.flow.flow_id, "acknowledgement of packet", self.packet.packet_id
@@ -395,6 +399,7 @@ class Link(object):
         self.next_send_time = None
         self.buffer_size = buffer_size
 
+
         self.capacity = capacity
         self.available_space = buffer_size
 
@@ -450,6 +455,7 @@ class Flow(object):
 
         self.payload_size = payload_size
         self.start_time = start_time
+        self.pushed_packets = {} # never delete from this
         self.unacknowledged_packets = {} # map from packet_ids to the times at which they were sent
         #self.acknowledged_packets = {} # map fromr packet_ids to # of times they have been acknowledged
         self.unpushed = []
@@ -459,6 +465,8 @@ class Flow(object):
         self.prev_ack = [-1, -1, -1]
         self.baseRTT = 1000
         self.window_size_history = []
+        self.alg_type = congestion_control_algorithm
+        self.num_packets = self.payload_size / DATA_PACKET_SIZE
 
 
     def slow_start(self):
@@ -470,7 +478,7 @@ class Flow(object):
         return self.WINDOW_SIZE
 
 
-    def congestion_control_algorithm(self, packet_id):
+    def reno(self, packet_id):
 
         num_packets = self.payload_size / DATA_PACKET_SIZE
         print "calling congestion control alg"
@@ -502,15 +510,14 @@ class Flow(object):
             if self.WINDOW_SIZE <= self.THRESHOLD:
                 self.window_size_history.append((TIME, self.slow_start()))
             else:
-                self.window_size_histor.append((TIME, self.cong_avoid()))
+                self.window_size_history.append((TIME, self.cong_avoid()))
             #self.WINDOW_SIZE = self.WINDOW_SIZE + 1.0 / self.WINDOW_SIZE
 
         self.send()
 
 
-    def congestion_control_algorithm2(self, packet_id):
+    def fast(self, packet_id):
 
-        num_packets = self.payload_size / DATA_PACKET_SIZE
         print "calling congestion control alg"
 
         temp_unack = self.unacknowledged_packets.keys()
@@ -531,25 +538,20 @@ class Flow(object):
             self.WINDOW_SIZE = max(self.WINDOW_SIZE / 2.0, 1.0)
             self.window_size_history.append((TIME, self.WINDOW_SIZE))
             TIME = TIME + .001
-            if int(packet_id[3:]) < num_packets: #and int(packet_id[3:]) not in self.unpushed:
+            if int(packet_id[3:]) < self.num_packets: #and int(packet_id[3:]) not in self.unpushed:
                 print "pushing if double ack"
                 heapq.heappush(self.unpushed, int(packet_id[3:]))
 
 
 
-        else:
+        elif int(packet_id[3:]) < self.num_packets:
             curr_rtt = self.round_trip_time_history[packet_id]
-            gamma = 0.1
+            gamma = 0.001
             alpha = 15
             w = self.WINDOW_SIZE
             self.WINDOW_SIZE = min(2 * w, (1 - gamma) * w + gamma * ((self.baseRTT / curr_rtt) * w + alpha))
-            self.WINDOW_SIZE = 1
+            #self.WINDOW_SIZE = 1
             self.window_size_history.append((TIME, self.WINDOW_SIZE))
-
-
-
-
-            #self.WINDOW_SIZE = self.WINDOW_SIZE + 1.0 / self.WINDOW_SIZE
 
         self.send()
 
@@ -564,18 +566,17 @@ class Flow(object):
             packet_num = self.unpushed.pop()
             packet_id = str(self.flow_id) + "_" + str(packet_num)
             self.unacknowledged_packets[packet_id] = TIME
+            self.pushed_packets[packet_id] = TIME
             packet = DataPacket(packet_id, self.source_host, self.destination_host)
             self.network.event_queue.push(ReceivePacketEvent(TIME, packet, self.source_host))
-            # self.network.event_queue.push(TimeoutEvent(TIME + TIMEOUT, packet, self))
+            if self.alg_type == "reno":
+                self.network.event_queue.push(TimeoutEvent(TIME + TIMEOUT, packet, self))
 
 
     def setup(self):
         global TIMEOUT
 
-        num_packets = self.payload_size / DATA_PACKET_SIZE # TODO
-        print num_packets, "\n"
-
-        for packet in range(num_packets):
+        for packet in range(self.num_packets):
             packet_id = packet
 
             heapq.heappush(self.unpushed, packet_id)
