@@ -5,7 +5,7 @@ import heapq
 DATA_PACKET_SIZE = 1024 * 8
 ACK_PACKET_SIZE = 64 * 8
 TIME = 0
-TIMEOUT = 0.2
+TIMEOUT = 0.1
 #WINDOW_SIZE = 20
 BIG = 10**20
 
@@ -274,8 +274,6 @@ class PacketAcknowledgementEvent(Event):
 
         self.flow.congestion_control_algorithm2(self.packet.packet_id)
 
-        # TODO send more packets?
-
     def print_event_description(self):
         print "Timestamp:", self.timestamp, "flow", self.flow.flow_id, "acknowledgement of packet", self.packet.packet_id
 
@@ -296,7 +294,7 @@ class TimeoutEvent(Event):
 
             # reset the window size to 1
             self.flow.WINDOW_SIZE = 1
-            self.flow.window_size_history.append((timestamp, self.flow.WINDOW_SIZE))
+            #self.flow.window_size_history.append((timestamp, self.flow.WINDOW_SIZE))
             self.THRESHOLD = self.flow.WINDOW_SIZE / 2.0
             heapq.heappush(self.flow.unpushed, packet_num)
             self.flow.send()
@@ -533,7 +531,8 @@ class Flow(object):
             self.WINDOW_SIZE = max(self.WINDOW_SIZE / 2.0, 1.0)
             self.window_size_history.append((TIME, self.WINDOW_SIZE))
             TIME = TIME + .001
-            if int(packet_id[3:]) < num_packets and int(packet_id[3:]) not in self.unpushed:
+            if int(packet_id[3:]) < num_packets: #and int(packet_id[3:]) not in self.unpushed:
+                print "pushing if double ack"
                 heapq.heappush(self.unpushed, int(packet_id[3:]))
 
 
@@ -544,6 +543,7 @@ class Flow(object):
             alpha = 15
             w = self.WINDOW_SIZE
             self.WINDOW_SIZE = min(2 * w, (1 - gamma) * w + gamma * ((self.baseRTT / curr_rtt) * w + alpha))
+            self.WINDOW_SIZE = 1
             self.window_size_history.append((TIME, self.WINDOW_SIZE))
 
 
@@ -566,6 +566,7 @@ class Flow(object):
             self.unacknowledged_packets[packet_id] = TIME
             packet = DataPacket(packet_id, self.source_host, self.destination_host)
             self.network.event_queue.push(ReceivePacketEvent(TIME, packet, self.source_host))
+            # self.network.event_queue.push(TimeoutEvent(TIME + TIMEOUT, packet, self))
 
 
     def setup(self):
