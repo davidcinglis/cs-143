@@ -241,9 +241,7 @@ class PacketAcknowledgementEvent(Event):
             self.flow.round_trip_time_history[self.packet.packet_id] = round_trip_time
             if round_trip_time < self.flow.baseRTT:
                 self.flow.baseRTT = round_trip_time
-            #self.flow.round_trip_time_history[send_time] = round_trip_time #TODO should this key be receive time
-            #print self.flow.round_trip_time_history
-
+            
         self.flow.congestion_control_algorithm2(self.packet.packet_id)
         # TODO send more packets?
 
@@ -267,6 +265,7 @@ class TimeoutEvent(Event):
 
             # reset the window size to 1 
             self.flow.WINDOW_SIZE = 1
+            self.flow.window_size_history.append((timestamp, self.flow.WINDOW_SIZE))
             self.THRESHOLD = self.flow.WINDOW_SIZE / 2.0
             heapq.heappush(self.flow.unpushed, packet_num)
             self.flow.send()
@@ -365,13 +364,16 @@ class Flow(object):
         self.THRESHOLD = 64
         self.prev_ack = [-1, -1, -1]
         self.baseRTT = 1000
+        self.window_size_history = []
 
 
     def slow_start(self):
         self.WINDOW_SIZE += 1
+        return self.WINDOW_SIZE
 
     def cong_avoid(self):
         self.WINDOW_SIZE += 1 / self.WINDOW_SIZE
+        return self.WINDOW_SIZE
 
 
     def congestion_control_algorithm(self, packet_id):
@@ -397,15 +399,16 @@ class Flow(object):
             # cut threshold to half
             self.THRESHOLD = self.WINDOW_SIZE / 2
             self.WINDOW_SIZE = max(self.WINDOW_SIZE / 2.0, 1.0)
+            self.window_size_history.append((TIME, self.WINDOW_SIZE))
             TIME = TIME + .001
             if int(packet_id[3:]) < num_packets and int(packet_id[3:]) not in self.unpushed:
                 heapq.heappush(self.unpushed, int(packet_id[3:]))
 
         else:
             if self.WINDOW_SIZE <= self.THRESHOLD:
-                self.slow_start()
+                self.window_size_history.append((TIME, self.slow_start()))
             else:
-                self.cong_avoid()
+                self.window_size_histor.append((TIME, self.cong_avoid()))
             #self.WINDOW_SIZE = self.WINDOW_SIZE + 1.0 / self.WINDOW_SIZE
 
         self.send()
@@ -432,6 +435,7 @@ class Flow(object):
         if self.prev_ack[1] == self.prev_ack[2]:
             print "packet triple ack on id: " + str(self.prev_ack)
             self.WINDOW_SIZE = max(self.WINDOW_SIZE / 2.0, 1.0)
+            self.window_size_history.append((TIME, self.WINDOW_SIZE))
             TIME = TIME + .001
             if int(packet_id[3:]) < num_packets and int(packet_id[3:]) not in self.unpushed:
                 heapq.heappush(self.unpushed, int(packet_id[3:]))
@@ -439,12 +443,12 @@ class Flow(object):
 
 
         else:
-            print self.round_trip_time_history
             curr_rtt = self.round_trip_time_history[packet_id]
-            gamma = 0.5
+            gamma = 0.1
             alpha = 15
             w = self.WINDOW_SIZE
             self.WINDOW_SIZE = min(2 * w, (1 - gamma) * w + gamma * ((self.baseRTT / curr_rtt) * w + alpha))
+            self.window_size_history.append((TIME, self.WINDOW_SIZE))
 
 
             
@@ -453,15 +457,13 @@ class Flow(object):
 
         self.send()
 
-
-
-
     def send(self, delay = 0):
         global TIME
         self.unpushed.sort(reverse = True)
         
-        while (len(self.unacknowledged_packets) < self.WINDOW_SIZE) and self.unpushed:
+        print len(self.unacknowledged_packets), self.WINDOW_SIZE, len(self.unpushed)
 
+        while (len(self.unacknowledged_packets) < self.WINDOW_SIZE) and self.unpushed:
             TIME = TIME + .001 + delay
             packet_num = self.unpushed.pop()
             packet_id = str(self.flow_id) + "_" + str(packet_num)
@@ -475,6 +477,7 @@ class Flow(object):
         global TIMEOUT
 
         num_packets = self.payload_size / DATA_PACKET_SIZE # TODO
+        print num_packets, "\n"
 
         for packet in range(num_packets):
             packet_id = packet 
