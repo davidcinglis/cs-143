@@ -29,8 +29,9 @@ def run_test_case_0_lite():
     n.event_loop()
 
     for flow in n.flow_dict:
-        plot_flow_rate(n.flow_dict[flow])
-        plot_round_trip_time(n.flow_dict[flow])
+        pass
+        #plot_flow_rate(n.flow_dict[flow])
+        #plot_round_trip_time(n.flow_dict[flow])
 
     for link in n.link_dict:
         plot_buffer_occupancy(n.link_dict[link])
