@@ -7,6 +7,7 @@ ACK_PACKET_SIZE = 64 * 8
 TIME = 0
 TIMEOUT = 0.2
 #WINDOW_SIZE = 20
+BIG = 10**20
 
 class Network(object):
     """docstring for Network."""
@@ -23,11 +24,7 @@ class Network(object):
         self.event_queue = EventQueue()
 
 
-    def add_host(self, node):
-        self.node_dict[node.node_id] = node
-        node.network = self
-
-    def add_router(self, node):
+    def add_node(self, node):
         self.node_dict[node.node_id] = node
         node.network = self
 
@@ -44,6 +41,7 @@ class Network(object):
 
     def event_loop(self):
 
+        self.event_queue.push(UpdateAllRoutingTablesEvent(-1, self))
         self.active_flows = len(self.flow_dict)
 
         while not self.event_queue.is_empty():
@@ -81,6 +79,31 @@ class Event(object):
         return self.timestamp - other.timestamp
 
 
+class UpdateAllRoutingTablesEvent(Event):
+    """docstring for UpdateAllRoutingTablesEvent."""
+    def __init__(self, timestamp, network):
+        super(UpdateAllRoutingTablesEvent, self).__init__(timestamp)
+        self.network = network
+
+    def handle(self):
+
+        for link_id in self.network.link_dict:
+            link = self.network.link_dict[link_id]
+            print link.link_id, link.buffer_size, link.available_space
+
+        # Update all the routing tables (Pscyhically, for now) TODO fix this
+        for node_id in self.network.node_dict:
+            node = self.network.node_dict[node_id]
+            node.update_routing_table()
+
+        # Schedule the next routing tables update, but only if there are other events on the queue, or this is the first one
+        if not self.network.event_queue.is_empty():
+            self.network.event_queue.push(UpdateAllRoutingTablesEvent(self.timestamp + 0.1, self.network))
+
+    def print_event_description(self):
+        print "Timestamp:", self.timestamp, "Executed an update of routing tables."
+
+
 
 class ReceivePacketEvent(Event):
     """docstring for ReceivePacketEvent."""
@@ -113,7 +136,7 @@ class ReceivePacketEvent(Event):
                 # for this flow
                 if p_id not in self.receiving_node.rec_pkts[f_id]:
                     self.receiving_node.rec_pkts[f_id].append(p_id)
-                
+
                 # sort the receiving packets in ascending order
                 self.receiving_node.rec_pkts[f_id].sort()
 
@@ -122,7 +145,7 @@ class ReceivePacketEvent(Event):
                     new_id = f_id + "_" + str(self.receiving_node.next_expected[f_id])
 
                 for p_id in self.receiving_node.rec_pkts[f_id]:
-                    # packet we are on is not the one are expecting, so keep looking 
+                    # packet we are on is not the one are expecting, so keep looking
                     if p_id < self.receiving_node.next_expected[f_id]:
                         continue
                     # if we have received the expected packet, increment value of expected packet
@@ -131,7 +154,7 @@ class ReceivePacketEvent(Event):
                     else:
                         break
 
-                # ** check this 
+                # ** check this
                 # current packet is the expected one
                 if new_id == -1:
                     new_id = f_id + "_" + str(self.receiving_node.next_expected[f_id])
@@ -140,7 +163,7 @@ class ReceivePacketEvent(Event):
                 ack = AcknowledgementPacket(new_id, self.packet.destination, self.packet.source)
                 # push an event to receive the ack
                 self.receiving_node.network.event_queue.push(ReceivePacketEvent(self.timestamp, ack, self.receiving_node))
-               
+
                 print "Received packets:", self.receiving_node.rec_pkts[f_id]
                 print "Expected packet:", self.receiving_node.next_expected[f_id]
 
@@ -197,7 +220,7 @@ class EnterBufferEvent(Event):
 
             self.link.network.event_queue.push(lbe)
         else:
-            
+
             self.link.packets_lost_history.append(self.timestamp)
 
 
@@ -208,18 +231,14 @@ class EnterBufferEvent(Event):
 
 class LeaveBufferEvent(Event):
     """docstring for LeaveBufferEvent."""
-    
+
     def __init__(self, timestamp, packet, link, current_node):
         super(LeaveBufferEvent, self).__init__(timestamp)
         self.packet = packet
         self.link = link
         self.current_node = current_node
-        if self.link.node_1 == self.current_node:
-            self.next_node = self.link.node_2
-        elif self.link.node_2 == self.current_node:
-            self.next_node = self.link.node_1
-        else:
-            raise ValueError("Node not in link")
+        self.next_node = self.link.get_other_node(self.current_node)
+
 
     def handle(self):
         self.link.available_space += self.packet.size
@@ -232,8 +251,10 @@ class LeaveBufferEvent(Event):
         self.link.network.event_queue.push(rcpe)
 
     def print_event_description(self):
-        #print "Timestamp:", self.timestamp, "Packet", self.packet.packet_id, "(", self.packet.source.node_id, "->", self.packet.destination.node_id, ")", "leaving buffer at node", self.current_node.node_id, "(link", self.link.link_id, ")"
+        print "Timestamp:", self.timestamp, "Packet", self.packet.packet_id, "(", self.packet.source.node_id, "->", self.packet.destination.node_id, ")", "leaving buffer at node", self.current_node.node_id, "(link", self.link.link_id, ")"
         pass
+
+        
 class PacketAcknowledgementEvent(Event):
     """docstring for PacketAcknowledgementEvent."""
     def __init__(self, timestamp, packet, flow):
@@ -250,7 +271,7 @@ class PacketAcknowledgementEvent(Event):
             self.flow.round_trip_time_history[self.packet.packet_id] = round_trip_time
             if round_trip_time < self.flow.baseRTT:
                 self.flow.baseRTT = round_trip_time
-            
+
         self.flow.congestion_control_algorithm2(self.packet.packet_id)
 
         # TODO send more packets?
@@ -267,41 +288,92 @@ class TimeoutEvent(Event):
     def handle(self):
         packet_num = int(self.packet.packet_id[3:])
         print "TIMEOUT EVENT OCCURRING", packet_num
-        
+
         # if timeout acually happens
         if self.packet.packet_id  in self.flow.unacknowledged_packets:
             del self.flow.unacknowledged_packets[self.packet.packet_id]
             #self.flow.WINDOW_SIZE = max(self.flow.WINDOW_SIZE / 2.0, 1.0)
 
-            # reset the window size to 1 
+            # reset the window size to 1
             self.flow.WINDOW_SIZE = 1
             self.flow.window_size_history.append((timestamp, self.flow.WINDOW_SIZE))
             self.THRESHOLD = self.flow.WINDOW_SIZE / 2.0
             heapq.heappush(self.flow.unpushed, packet_num)
             self.flow.send()
-        
+
     def print_event_description(self):
         print "Timestamp:", self.timestamp, "flow", self.flow.flow_id, "checking timeout for packet", self.packet.packet_id
 
-class Host(object):
-    """docstring for Host."""
+
+class Node(object):
+    """docstring for Node."""
     def __init__(self, node_id):
-        super(Host, self).__init__()
+        super(Node, self).__init__()
         self.node_id = node_id
         self.routing_table = {}
+        self.adjacent_links = []
+
+    def update_routing_table(self):
+
+        unvisited_nodes = {node_id for node_id in self.network.node_dict}
+        distance_dict = {node_id : BIG for node_id in self.network.node_dict}
+        previous_dict = {node_id : None for node_id in self.network.node_dict}
+
+        distance_dict[self.node_id] = 0
+
+        while unvisited_nodes:
+
+            min_dist = min(distance_dict[node] for node in unvisited_nodes)
+            current_vertex = [node for node in unvisited_nodes if distance_dict[node] == min_dist][0]
+
+            unvisited_nodes.remove(current_vertex)
+
+            for link in self.network.node_dict[current_vertex].adjacent_links:
+                adj_node = link.get_other_node(self.network.node_dict[current_vertex])
+
+                distance_through_node = distance_dict[current_vertex] + link.current_cost()
+
+                if distance_through_node < distance_dict[adj_node.node_id]:
+                    distance_dict[adj_node.node_id] = distance_through_node
+                    previous_dict[adj_node.node_id] = current_vertex
+
+
+        for node_id in self.network.node_dict:
+            if node_id == self.node_id:
+                continue
+            traceback_node_id = node_id
+            while previous_dict[traceback_node_id] != self.node_id:
+                traceback_node_id = previous_dict[traceback_node_id]
+
+
+
+            self.routing_table[node_id] = self.get_link_from_node_id(traceback_node_id)
+
+
+    def get_link_from_node_id(self, adjacent_node_id):
+        for link in self.adjacent_links:
+            if link.get_other_node(self).node_id == adjacent_node_id:
+                return link
+
+        raise ValueError
+
+
+class Host(Node):
+    """docstring for Host."""
+    def __init__(self, node_id):
+        super(Host, self).__init__(node_id)
 
         # For a given flow, this gives the id of the next expected packet.
         self.next_expected = {}
         self.rec_pkts = dict()
 
 
-class Router(object):
+class Router(Node):
     """docstring for Router."""
     def __init__(self, node_id):
-        super(Router, self).__init__()
-        self.node_id = node_id
+        super(Router, self).__init__(node_id)
 
-        self.routing_table = routing_table
+
 
 
 class Link(object):
@@ -311,6 +383,9 @@ class Link(object):
         self.link_id = link_id
         self.node_1 = node_1
         self.node_2 = node_2
+
+        self.node_1.adjacent_links.append(self)
+        self.node_2.adjacent_links.append(self)
 
         # Array of all times we lost a packet
         self.packets_lost_history = []
@@ -325,9 +400,19 @@ class Link(object):
         self.capacity = capacity
         self.available_space = buffer_size
 
-        
-
         self.delay = delay
+
+    def get_other_node(self, node):
+
+        if self.node_1 == node:
+            return self.node_2
+        elif self.node_2 == node:
+            return self.node_1
+        else:
+            raise ValueError("Node not in link")
+
+    def current_cost(self):
+        return float(self.buffer_size - self.available_space)/self.capacity
 
 
 class Packet(object):
@@ -398,7 +483,7 @@ class Flow(object):
                 del self.unacknowledged_packets[p]
 
         # shift last two elements to be first two
-        global TIME 
+        global TIME
         for i in range(2):
             self.prev_ack[i] = self.prev_ack[i + 1]
         # replace last element with new ack
@@ -436,7 +521,7 @@ class Flow(object):
                 del self.unacknowledged_packets[p]
 
         # shift last two elements to be first two
-        global TIME 
+        global TIME
         for i in range(2):
             self.prev_ack[i] = self.prev_ack[i + 1]
         # replace last element with new ack
@@ -462,8 +547,8 @@ class Flow(object):
             self.window_size_history.append((TIME, self.WINDOW_SIZE))
 
 
-            
-            
+
+
             #self.WINDOW_SIZE = self.WINDOW_SIZE + 1.0 / self.WINDOW_SIZE
 
         self.send()
@@ -471,7 +556,7 @@ class Flow(object):
     def send(self, delay = 0):
         global TIME
         self.unpushed.sort(reverse = True)
-        
+
         print len(self.unacknowledged_packets), self.WINDOW_SIZE, len(self.unpushed)
 
         while (len(self.unacknowledged_packets) < self.WINDOW_SIZE) and self.unpushed:
@@ -490,9 +575,8 @@ class Flow(object):
         print num_packets, "\n"
 
         for packet in range(num_packets):
-            packet_id = packet 
-            
+            packet_id = packet
+
             heapq.heappush(self.unpushed, packet_id)
 
         self.send(self.start_time)
-

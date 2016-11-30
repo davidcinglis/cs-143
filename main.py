@@ -11,8 +11,8 @@ def run_test_case_0_lite():
     h1 = Host("h1")
     h2 = Host("h2")
 
-    n.add_host(h1)
-    n.add_host(h2)
+    n.add_node(h1)
+    n.add_node(h2)
 
     # Adds link l1 from h1 to h2. Link has buffer 64 KB, 10 Mbps capacity, 10 ms delay
     n.add_link("l1", h1, h2, 64 * 1000 * 8, 10 * 10**6, 10 * 10**-3)
@@ -47,8 +47,8 @@ def run_test_case_0():
     h1 = Host("h1")
     h2 = Host("h2")
 
-    n.add_host(h1)
-    n.add_host(h2)
+    n.add_node(h1)
+    n.add_node(h2)
 
     # Adds link l1 from h1 to h2. Link has buffer 64 KB, 10 Mbps capacity, 10 ms delay
     n.add_link("l1", h1, h2, 64 * 1000 * 8, 10 * 10**6, 10 * 10**-3)
@@ -77,13 +77,13 @@ def run_test_case_1():
     r3 = Router("r3")
     r4 = Router("r4")
 
-    n.add_host(h1)
-    n.add_host(h2)
+    n.add_node(h1)
+    n.add_node(h2)
 
-    n.add_router(r1)
-    n.add_router(r2)
-    n.add_router(r3)
-    n.add_router(r4)
+    n.add_node(r1)
+    n.add_node(r2)
+    n.add_node(r3)
+    n.add_node(r4)
 
 
 
@@ -102,7 +102,8 @@ def run_test_case_1():
 
 
     # Adds flow f1 from h1 to h2. Flow has payload 20MB, starts at t=0.5, no congestion control.
-    n.add_flow("f1", h1, h2, 20 * 10**6 * 8, 0.5, None)
+    n.add_flow("f1", h1, h2, DATA_PACKET_SIZE * 50, 0.5, None)
+    # n.add_flow("f1", h1, h2, 20 * 10**6 * 8, 0.5, None)
 
 
     # setup the routing table for h1
@@ -129,13 +130,14 @@ def run_test_case_1():
 
     n.event_loop()
 
-    for flow in n.flow_dict:
-        plot_flow_rate(n.flow_dict[flow])
-        plot_round_trip_time(n.flow_dict[flow])
-
-    for link in n.link_dict:
-        plot_packet_loss(n.link_dict[link])
-        plot_link_rate(n.link_dict[link])
+    # for flow in n.flow_dict:
+    #     pass
+    #     # plot_flow_rate(n.flow_dict[flow])
+    #     # plot_round_trip_time(n.flow_dict[flow])
+    #
+    # for link in n.link_dict:
+    #     plot_packet_loss(n.link_dict[link])
+    #     plot_link_rate(n.link_dict[link])
 
 
 
@@ -155,17 +157,17 @@ def run_test_case_2():
     r3 = Router("r3")
     r4 = Router("r4")
 
-    n.add_host(s1)
-    n.add_host(s2)
-    n.add_host(s3)
-    n.add_host(t1)
-    n.add_host(t2)
-    n.add_host(t3)
+    n.add_node(s1)
+    n.add_node(s2)
+    n.add_node(s3)
+    n.add_node(t1)
+    n.add_node(t2)
+    n.add_node(t3)
 
-    n.add_router(r1)
-    n.add_router(r2)
-    n.add_router(r3)
-    n.add_router(r4)
+    n.add_node(r1)
+    n.add_node(r2)
+    n.add_node(r3)
+    n.add_node(r4)
 
 
 
@@ -208,4 +210,4 @@ def run_test_case_2():
 
 
 if __name__ == '__main__':
-    run_test_case_0_lite()
+    run_test_case_1()
