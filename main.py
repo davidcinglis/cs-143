@@ -183,13 +183,13 @@ def run_test_case_2():
 
 
     # Adds flow f1. Flow has payload 35MB, starts at t=0.5, no congestion control.
-    n.add_flow("f1", s1, t1, 35 * 10**6 * 8, 0.5, "reno")
+    n.add_flow("f1", s1, t1, DATA_PACKET_SIZE * 5000, 0.5, "reno")
 
     # Adds flow f2. Flow has payload 15MB, starts at t=10, no congestion control.
-    n.add_flow("f2", s2, t2, 15 * 10**6 * 8, 0.5, "reno")
+    n.add_flow("f2", s2, t2, DATA_PACKET_SIZE * 5000, 0.5, "reno")
 
     # Adds flow f3. Flow has payload 30MB, starts at t=20, no congestion control.
-    n.add_flow("f3", s3, t3, 30 * 10**6 * 8, 0.5, "reno")
+    n.add_flow("f3", s3, t3, DATA_PACKET_SIZE * 5000, 0.5, "reno")
 
 
 
@@ -198,8 +198,17 @@ def run_test_case_2():
 
     n.event_loop()
 
+    for flow in n.flow_dict:
+        plot_flow_rate(n.flow_dict[flow])
+        plot_window_size(n.flow_dict[flow])
+        #plot_round_trip_time(n.flow_dict[flow])
+
+    for link in n.link_dict:
+        plot_packet_loss(n.link_dict[link])
+        plot_link_rate(n.link_dict[link])
+
 
 
 
 if __name__ == '__main__':
-    run_test_case_2()
+    run_test_case_1()

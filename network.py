@@ -121,44 +121,27 @@ class ReceivePacketEvent(Event):
                 # retrieve flow id
                 f_id = self.packet.packet_id[0:2]
                 # retrieve packet id
-                p_id = int(self.packet.packet_id[3:])
+                newly_received_id = int(self.packet.packet_id[3:])
                 # if we've never received anything from this flow
                 if (f_id not in self.receiving_node.rec_pkts):
                     # then expect to receive the first packet
                     #print "Received packets:", self.receiving_node.rec_pkts[f_id]
-                    self.receiving_node.rec_pkts[f_id] = []
+                    self.receiving_node.rec_pkts[f_id] = set()
                     self.receiving_node.next_expected[f_id] = 0
 
                 # if we haven't already received this packet, add it to the list of rceived packets
                 # for this flow
-                if p_id not in self.receiving_node.rec_pkts[f_id]:
-                    self.receiving_node.rec_pkts[f_id].append(p_id)
+                if newly_received_id not in self.receiving_node.rec_pkts[f_id]:
+                    self.receiving_node.rec_pkts[f_id].add(newly_received_id)
 
-                # sort the receiving packets in ascending order
-                self.receiving_node.rec_pkts[f_id].sort()
+                while self.receiving_node.next_expected[f_id] in self.receiving_node.rec_pkts[f_id]:
+                    self.receiving_node.next_expected[f_id] += 1
 
-                new_id = -1
-                if p_id == self.receiving_node.next_expected[f_id]:
-                    new_id = f_id + "_" + str(self.receiving_node.next_expected[f_id])
-
-                for p_id in self.receiving_node.rec_pkts[f_id]:
-                    # packet we are on is not the one are expecting, so keep looking
-                    if p_id < self.receiving_node.next_expected[f_id]:
-                        continue
-                    # if we have received the expected packet, increment value of expected packet
-                    elif p_id == self.receiving_node.next_expected[f_id]:
-                        self.receiving_node.next_expected[f_id] += 1
-                    else:
-                        break
-
-                # ** check this
-                # current packet is the expected one
-                if new_id == -1:
-                    new_id = f_id + "_" + str(self.receiving_node.next_expected[f_id])
+                updated_next_expected_id = None
+                updated_next_expected_id = f_id + "_" + str(self.receiving_node.next_expected[f_id])
 
                 # create an ack packet
-                print "NEW_ID", new_id, p_id
-                ack = AcknowledgementPacket(new_id, self.packet.destination, self.packet.source)
+                ack = AcknowledgementPacket(f_id + "_" + str(newly_received_id), self.packet.destination, self.packet.source, updated_next_expected_id)
                 # push an event to receive the ack
                 self.receiving_node.network.event_queue.push(ReceivePacketEvent(self.timestamp, ack, self.receiving_node))
 
@@ -264,16 +247,14 @@ class PacketAcknowledgementEvent(Event):
         if self.packet.packet_id in self.flow.pushed_packets:
             send_time = self.flow.pushed_packets[self.packet.packet_id]
             round_trip_time = self.timestamp - send_time
-            print "Timestamp\n\n", self.timestamp, send_time
-            print self.packet.packet_id
             self.flow.round_trip_time_history[self.packet.packet_id] = round_trip_time
             if round_trip_time < self.flow.baseRTT:
                 self.flow.baseRTT = round_trip_time
 
         if self.flow.alg_type == "reno":
-            self.flow.reno(self.packet.packet_id, self.timestamp)
+            self.flow.reno(self.packet, self.timestamp)
         else:
-            self.flow.fast(self.packet.packet_id, self.timestamp)
+            self.flow.fast(self.packet, self.timestamp)
 
     def print_event_description(self):
         print "Timestamp:", self.timestamp, "flow", self.flow.flow_id, "acknowledgement of packet", self.packet.packet_id
@@ -434,9 +415,10 @@ class DataPacket(Packet):
 
 class AcknowledgementPacket(Packet):
     """docstring for AcknowledgementPacket."""
-    def __init__(self, packet_id, source, destination):
+    def __init__(self, packet_id, source, destination, ACK):
         super(AcknowledgementPacket, self).__init__(packet_id, source, destination)
         self.size = ACK_PACKET_SIZE # All acknowledgement packets have 64 bytes.
+        self.ACK = ACK
 
 
 
@@ -459,7 +441,7 @@ class Flow(object):
         self.unpushed = []
         self.flow_rate_history = [] # an array of timestamp, bytes_sent tuples
         self.WINDOW_SIZE = 20
-        self.THRESHOLD = 64
+        self.THRESHOLD = 500
         self.prev_ack = [-1, -1, -1]
         self.baseRTT = 1000
         self.window_size_history = []
@@ -476,21 +458,21 @@ class Flow(object):
         return self.WINDOW_SIZE
 
 
-    def reno(self, packet_id, current_time):
+    def reno(self, packet, current_time):
 
         num_packets = self.payload_size / DATA_PACKET_SIZE
         print "calling congestion control alg"
 
         temp_unack = self.unacknowledged_packets.keys()
         for p in temp_unack:
-            if int(p[3:]) <= int(packet_id[3:]):
+            if int(p[3:]) < int(packet.ACK[3:]):
                 del self.unacknowledged_packets[p]
 
         # shift last two elements to be first two
         for i in range(2):
             self.prev_ack[i] = self.prev_ack[i + 1]
         # replace last element with new ack
-        self.prev_ack[2] = packet_id
+        self.prev_ack[2] = packet.ACK
 
         # if triple ack occurs
         if self.prev_ack[0] == self.prev_ack[1] and self.prev_ack[1] == self.prev_ack[2]:
@@ -500,8 +482,8 @@ class Flow(object):
             self.WINDOW_SIZE = max(self.WINDOW_SIZE / 2.0, 1.0)
             self.window_size_history.append((current_time, self.WINDOW_SIZE))
             current_time += .01
-            if int(packet_id[3:]) < num_packets and int(packet_id[3:]) not in self.unpushed:
-                heapq.heappush(self.unpushed, int(packet_id[3:]))
+            if int(packet.ACK[3:]) < num_packets and int(packet.ACK[3:]) not in self.unpushed:
+                heapq.heappush(self.unpushed, int(packet.ACK[3:]))
 
         else:
             if self.WINDOW_SIZE <= self.THRESHOLD:
@@ -513,35 +495,30 @@ class Flow(object):
         self.send(current_time)
 
 
-    def fast(self, packet_id, current_time):
-
-        print "calling congestion control alg"
-
+    def fast(self, packet, current_time):
+        print '$$$$$$', packet.ACK
         temp_unack = self.unacknowledged_packets.keys()
         for p in temp_unack:
-            if int(p[3:]) <= int(packet_id[3:]):
+            if int(p[3:]) < int(packet.ACK[3:]):
                 del self.unacknowledged_packets[p]
 
         # shift last two elements to be first two
         for i in range(2):
             self.prev_ack[i] = self.prev_ack[i + 1]
         # replace last element with new ack
-        self.prev_ack[2] = packet_id
+        self.prev_ack[2] = packet.ACK
 
-        # if triple ack occurs
+        # if duplicate ack occurs
         if self.prev_ack[1] == self.prev_ack[2]:
-            print "packet triple ack on id: " + str(self.prev_ack)
             self.WINDOW_SIZE = max(self.WINDOW_SIZE / 2.0, 1.0)
             self.window_size_history.append((current_time, self.WINDOW_SIZE))
             current_time += .01
-            if int(packet_id[3:]) < self.num_packets: #and int(packet_id[3:]) not in self.unpushed:
-                print "pushing if double ack"
-                heapq.heappush(self.unpushed, int(packet_id[3:]))
+            if int(packet.ACK[3:]) < self.num_packets and int(packet.ACK[3:]) not in self.unpushed:
+                heapq.heappush(self.unpushed, int(packet.ACK[3:]))
 
-
-
-        elif int(packet_id[3:]) < self.num_packets:
-            curr_rtt = self.round_trip_time_history[packet_id]
+        elif int(packet.ACK[3:]) < self.num_packets:
+            print '@@@@@@@', packet.packet_id
+            curr_rtt = self.round_trip_time_history[packet.packet_id]
             self.baseRTT = min(self.baseRTT, curr_rtt)
             gamma = 0.5
             alpha = 15
@@ -559,19 +536,18 @@ class Flow(object):
     def send(self, execution_time):
         self.unpushed.sort(reverse = True)
 
-        print len(self.unacknowledged_packets), self.WINDOW_SIZE, len(self.unpushed)
-
         while (len(self.unacknowledged_packets) < self.WINDOW_SIZE) and self.unpushed:
-            execution_time += .01
+            execution_time += .00000001
             packet_num = self.unpushed.pop()
+            print 'UNPUSHED IS', self.unpushed
+            print 'SENDING', packet_num
             packet_id = str(self.flow_id) + "_" + str(packet_num)
             self.unacknowledged_packets[packet_id] = execution_time
             self.pushed_packets[packet_id] = execution_time
             packet = DataPacket(packet_id, self.source_host, self.destination_host)
             self.flow_rate_history.append((execution_time, DATA_PACKET_SIZE))
             self.network.event_queue.push(ReceivePacketEvent(execution_time, packet, self.source_host))
-            if self.alg_type == "reno":
-                self.network.event_queue.push(TimeoutEvent(execution_time + TIMEOUT, packet, self))
+            self.network.event_queue.push(TimeoutEvent(execution_time + TIMEOUT, packet, self))
 
 
     def setup(self):
