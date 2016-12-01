@@ -171,35 +171,27 @@ def run_test_case_2():
 
 
 
-    # Adds link l0 from h1 to r2. Link has buffer 128 KB, 12.5 Mbps capacity, 10 ms delay
-    n.add_link("l0", h1, r1, 128 * 1000 * 8, 12.5 * 10**6, 10 * 10**-3)
-    # Adds link l1 from r1 to r2. Link has buffer 128 KB, 10 Mbps capacity, 10 ms delay
+    n.add_link("l0", r1, s2, 128 * 1000 * 8, 12.5 * 10**6, 10 * 10**-3)
     n.add_link("l1", r1, r2, 128 * 1000 * 8, 10 * 10**6, 10 * 10**-3)
-    # Adds link l2 from r1 to r3. Link has buffer 128 KB, 10 Mbps capacity, 10 ms delay
-    n.add_link("l2", r1, r3, 128 * 1000 * 8, 10 * 10**6, 10 * 10**-3)
-    # Adds link l3 from r2 to r4. Link has buffer 128 KB, 10 Mbps capacity, 10 ms delay
-    n.add_link("l3", r2, r4, 128 * 1000 * 8, 10 * 10**6, 10 * 10**-3)
-    # Adds link l4 from r3 to r4. Link has buffer 128 KB, 12.5 Mbps capacity, 10 ms delay
-    n.add_link("l4", r3, r4, 128 * 1000 * 8, 12.5 * 10**6, 10 * 10**-3)
-    # Adds link l5 from r4 to h2. Link has buffer 128 KB, 12.5 Mbps capacity, 10 ms delay
-    n.add_link("l5", r4, h2, 128 * 1000 * 8, 12.5 * 10**6, 10 * 10**-3)
-    # Adds link l6 from r2 to r4. Link has buffer 128 KB, 12.5 Mbps capacity, 10 ms delay
-    n.add_link("l6", r2, r4, 128 * 1000 * 8, 12.5 * 10**6, 10 * 10**-3)
-    # Adds link l7 from r3 to r4. Link has buffer 128 KB, 12.5 Mbps capacity, 10 ms delay
-    n.add_link("l7", r3, r4, 128 * 1000 * 8, 12.5 * 10**6, 10 * 10**-3)
-    # Adds link l8 from r4 to h2. Link has buffer 128 KB, 12.5 Mbps capacity, 10 ms delay
-    n.add_link("l8", r4, h2, 128 * 1000 * 8, 12.5 * 10**6, 10 * 10**-3)
+    n.add_link("l2", r2, r3, 128 * 1000 * 8, 10 * 10**6, 10 * 10**-3)
+    n.add_link("l3", r3, r4, 128 * 1000 * 8, 10 * 10**6, 10 * 10**-3)
+    n.add_link("l4", r1, s1, 128 * 1000 * 8, 12.5 * 10**6, 10 * 10**-3)
+    n.add_link("l5", t2, r2, 128 * 1000 * 8, 12.5 * 10**6, 10 * 10**-3)
+    n.add_link("l6", s3, r3, 128 * 1000 * 8, 12.5 * 10**6, 10 * 10**-3)
+    n.add_link("l7", t1, r4, 128 * 1000 * 8, 12.5 * 10**6, 10 * 10**-3)
+    n.add_link("l8", r4, t3, 128 * 1000 * 8, 12.5 * 10**6, 10 * 10**-3)
 
 
-    # Adds flow f1 from h1 to h2. Flow has payload 20MB, starts at t=0.5, no congestion control.
-    n.add_flow("f1", h1, h2, 20 * 10**6 * 8, 0.5, None)
+    # Adds flow f1. Flow has payload 35MB, starts at t=0.5, no congestion control.
+    n.add_flow("f1", s1, t1, 35 * 10**6 * 8, 0.5, "reno")
+
+    # Adds flow f2. Flow has payload 15MB, starts at t=10, no congestion control.
+    n.add_flow("f2", s2, t2, 15 * 10**6 * 8, 0.5, "reno")
+
+    # Adds flow f3. Flow has payload 30MB, starts at t=20, no congestion control.
+    n.add_flow("f3", s3, t3, 30 * 10**6 * 8, 0.5, "reno")
 
 
-    # setup the routing table for h1
-    h1.routing_table["h2"] = n.link_dict["l0"]
-
-    # setup the routing table for h2
-    h2.routing_table["h1"] = n.link_dict["l5"]
 
     # Setup the routing tables for the routers
 
@@ -210,4 +202,4 @@ def run_test_case_2():
 
 
 if __name__ == '__main__':
-    run_test_case_1()
+    run_test_case_2()

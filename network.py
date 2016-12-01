@@ -165,8 +165,8 @@ class ReceivePacketEvent(Event):
                 # push an event to receive the ack
                 self.receiving_node.network.event_queue.push(ReceivePacketEvent(self.timestamp, ack, self.receiving_node))
 
-                print "Received packets:", self.receiving_node.rec_pkts[f_id]
-                print "Expected packet:", self.receiving_node.next_expected[f_id]
+                #print "Received packets:", self.receiving_node.rec_pkts[f_id]
+                #print "Expected packet:", self.receiving_node.next_expected[f_id]
 
 
             # if packet is an ack
@@ -255,7 +255,7 @@ class LeaveBufferEvent(Event):
         print "Timestamp:", self.timestamp, "Packet", self.packet.packet_id, "(", self.packet.source.node_id, "->", self.packet.destination.node_id, ")", "leaving buffer at node", self.current_node.node_id, "(link", self.link.link_id, ")"
         pass
 
-        
+
 class PacketAcknowledgementEvent(Event):
     """docstring for PacketAcknowledgementEvent."""
     def __init__(self, timestamp, packet, flow):
