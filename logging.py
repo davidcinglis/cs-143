@@ -124,3 +124,10 @@ def plot_round_trip_time(flow):
   plt.xlabel('time (seconds)')
   plt.ylabel('avg round trip time (secs)')
   plt.show()
+
+def plot_window_size(flow):
+  timestamps = [tup[0] for tup in flow.window_size_history]
+  window_sizes = [tup[1] for tup in flow.window_size_history]
+  print window_sizes
+  plt.plot(timestamps, window_sizes)
+  plt.show()
