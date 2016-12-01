@@ -86,7 +86,6 @@ class UpdateAllRoutingTablesEvent(Event):
 
         for link_id in self.network.link_dict:
             link = self.network.link_dict[link_id]
-            print link.link_id, link.buffer_size, link.available_space
 
         # Update all the routing tables (Pscyhically, for now) TODO fix this
         for node_id in self.network.node_dict:
@@ -117,7 +116,6 @@ class ReceivePacketEvent(Event):
             # if the packet is a data packet, create an acknowledgement and push an event to receive the acknowledgement
             if isinstance(self.packet, DataPacket):
 
-                print "CREATING ACK", self.packet.packet_id
                 # retrieve flow id
                 f_id = self.packet.packet_id[0:2]
                 # retrieve packet id
@@ -267,7 +265,6 @@ class TimeoutEvent(Event):
 
     def handle(self):
         packet_num = int(self.packet.packet_id[3:])
-        print "TIMEOUT EVENT OCCURRING", packet_num
 
         # if timeout acually happens
         if self.packet.packet_id  in self.flow.unacknowledged_packets:
@@ -461,7 +458,6 @@ class Flow(object):
     def reno(self, packet, current_time):
 
         num_packets = self.payload_size / DATA_PACKET_SIZE
-        print "calling congestion control alg"
 
         temp_unack = self.unacknowledged_packets.keys()
         for p in temp_unack:
@@ -476,7 +472,6 @@ class Flow(object):
 
         # if triple ack occurs
         if self.prev_ack[0] == self.prev_ack[1] and self.prev_ack[1] == self.prev_ack[2]:
-            print "packet triple ack on id: " + str(self.prev_ack)
             # cut threshold to half
             self.THRESHOLD = self.WINDOW_SIZE / 2
             self.WINDOW_SIZE = max(self.WINDOW_SIZE / 2.0, 1.0)
@@ -496,7 +491,6 @@ class Flow(object):
 
 
     def fast(self, packet, current_time):
-        print '$$$$$$', packet.ACK
         temp_unack = self.unacknowledged_packets.keys()
         for p in temp_unack:
             if int(p[3:]) < int(packet.ACK[3:]):
@@ -517,17 +511,12 @@ class Flow(object):
                 heapq.heappush(self.unpushed, int(packet.ACK[3:]))
 
         elif int(packet.ACK[3:]) < self.num_packets:
-            print '@@@@@@@', packet.packet_id
             curr_rtt = self.round_trip_time_history[packet.packet_id]
             self.baseRTT = min(self.baseRTT, curr_rtt)
             gamma = 0.5
             alpha = 15
             w = self.WINDOW_SIZE
-            print "old window size: %f" % self.WINDOW_SIZE
-            print "base rtt %f" % self.baseRTT
-            print "curr rtt %f" % curr_rtt
             self.WINDOW_SIZE = min(2 * w, (1 - gamma) * w + gamma * ((self.baseRTT / curr_rtt) * w + alpha))
-            print "new window size: %f" % self.WINDOW_SIZE
             #self.WINDOW_SIZE = 1
             self.window_size_history.append((current_time, self.WINDOW_SIZE))
 
@@ -539,8 +528,6 @@ class Flow(object):
         while (len(self.unacknowledged_packets) < self.WINDOW_SIZE) and self.unpushed:
             execution_time += .00000001
             packet_num = self.unpushed.pop()
-            print 'UNPUSHED IS', self.unpushed
-            print 'SENDING', packet_num
             packet_id = str(self.flow_id) + "_" + str(packet_num)
             self.unacknowledged_packets[packet_id] = execution_time
             self.pushed_packets[packet_id] = execution_time

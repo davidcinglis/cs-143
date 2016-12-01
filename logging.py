@@ -3,10 +3,6 @@ import numpy
 import matplotlib.pyplot as plt
 import math
 
-# TODO: Decide where to put the logging functionality
-# I decided to put it in a separate file for now for better readability
-# but it might make more sense to associate it with the network class
-
 def plot_buffer_occupancy(link):
   """
   This function plots available space in a buffer as a function of time.
@@ -14,6 +10,7 @@ def plot_buffer_occupancy(link):
   timestamps = [tup[0] for tup in link.buffer_occupancy_history]
   space_values = [tup[1] for tup in link.buffer_occupancy_history]
   plt.plot(timestamps, space_values)
+  plt.title('%s Buffer Occupancy' % link.link_id)
   plt.xlabel('time (seconds)')
   plt.ylabel('available space (bits)')
   plt.show()
@@ -33,6 +30,7 @@ def plot_packet_loss(link):
   timestamps.append(max_time)
   packet_loss_values.append(len(packet_loss_values) + 1)
   plt.plot(timestamps, packet_loss_values)
+  plt.title('%s Packet Loss' % link.link_id)
   plt.xlabel('time (seconds)')
   plt.ylabel('packets lost')
   plt.show()
@@ -63,6 +61,7 @@ def plot_link_rate(link):
 
   # plot the intervals
   plt.plot(intervals, flow_rate_values)
+  plt.title('%s Link Rate' % link.link_id)
   plt.xlabel('time (seconds)')
   plt.ylabel('link rate (bits/sec)')
   plt.show()
@@ -92,13 +91,15 @@ def plot_flow_rate(flow):
 
   # plot the intervals
   plt.plot(intervals, flow_rate_values)
+  plt.title('%s Flow Rate' % flow.flow_id)
   plt.xlabel('time (seconds)')
   plt.ylabel('flow rate (bits/sec)')
   plt.show()
 
 def plot_round_trip_time(flow):
-  timestamps = [tup[0] for tup in flow.round_trip_time_history]
-  max_time = math.ceil(max(timestamps))
+  send_time_tuples = sorted(flow.pushed_packets.items(), key=lambda x:x[1])
+
+  max_time = math.ceil(max([tup[1] for tup in send_time_tuples]))
 
   # creates quarter-second intervals
   intervals = numpy.linspace(0, max_time, max_time * 4)
@@ -109,18 +110,21 @@ def plot_round_trip_time(flow):
   for i in range(len(intervals)):
     sum = 0
     count = 0
-    while idx < len(flow.flow_rate_history) and flow.flow_rate_history[idx][0] <= intervals[i]:
+    while idx < len(send_time_tuples) and send_time_tuples[idx][1] <= intervals[i]:
       count += 1
-      sum += flow.flow_rate_history[idx][1]
+      sum += flow.round_trip_time_history[send_time_tuples[idx][0]]
       idx += 1
 
     if count > 0:
       rtt_values.append(sum * 1.0 / count)
+    elif idx > 0:
+      rtt_values.append(rtt_values[len(rtt_values) - 1])
     else:
       rtt_values.append(0)
 
   # plot the intervals
   plt.plot(intervals, rtt_values)
+  plt.title('%s Average Round Trip Time' % flow.flow_id)
   plt.xlabel('time (seconds)')
   plt.ylabel('avg round trip time (secs)')
   plt.show()
@@ -128,6 +132,6 @@ def plot_round_trip_time(flow):
 def plot_window_size(flow):
   timestamps = [tup[0] for tup in flow.window_size_history]
   window_sizes = [tup[1] for tup in flow.window_size_history]
-  print window_sizes
+  plt.title('%s Window Size' % flow.flow_id)
   plt.plot(timestamps, window_sizes)
   plt.show()
