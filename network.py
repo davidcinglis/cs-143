@@ -40,7 +40,12 @@ class Network(object):
 
     def event_loop(self):
 
-        self.event_queue.push(UpdateAllRoutingTablesEvent(-1, self))
+        for node_id in self.node_dict:
+            node = self.node_dict[node_id]
+            node.known_link_costs = {link_id : 1 for link_id in self.link_dict}
+            node.update_routing_table()
+
+        self.event_queue.push(SendRoutingPacketsEvent(5, self))
         self.active_flows = len(self.flow_dict)
 
         while not self.event_queue.is_empty():
@@ -76,25 +81,34 @@ class Event(object):
         return self.timestamp - other.timestamp
 
 
-class UpdateAllRoutingTablesEvent(Event):
-    """docstring for UpdateAllRoutingTablesEvent."""
+class SendRoutingPacketsEvent(Event):
+    """docstring for SendRoutingPacketsEvent."""
     def __init__(self, timestamp, network):
-        super(UpdateAllRoutingTablesEvent, self).__init__(timestamp)
+        super(SendRoutingPacketsEvent, self).__init__(timestamp)
         self.network = network
 
     def handle(self):
 
-        for link_id in self.network.link_dict:
-            link = self.network.link_dict[link_id]
-
-        # Update all the routing tables (Pscyhically, for now) TODO fix this
-        for node_id in self.network.node_dict:
-            node = self.network.node_dict[node_id]
-            node.update_routing_table()
-
         # Schedule the next routing tables update, but only if there are other events on the queue, or this is the first one
         if not self.network.event_queue.is_empty():
-            self.network.event_queue.push(UpdateAllRoutingTablesEvent(self.timestamp + 5, self.network))
+            self.network.event_queue.push(SendRoutingPacketsEvent(self.timestamp + 5, self.network))
+
+            for link_id in self.network.link_dict:
+                link = self.network.link_dict[link_id]
+
+            # Update all the routing tables (Psychically, for now) TODO fix this
+            for node_id_1 in self.network.node_dict:
+                node_1 = self.network.node_dict[node_id_1]
+
+                node_1.known_link_costs = {}
+                node_1.routing_table_up_to_date = False
+
+                for node_id_2 in self.network.node_dict:
+                    node_2 = self.network.node_dict[node_id_2]
+
+                    node_1.send_routing_packet(node_2, self.timestamp)
+
+
 
     def print_event_description(self):
         print "Timestamp:", self.timestamp, "Executed an update of routing tables."
@@ -153,6 +167,18 @@ class ReceivePacketEvent(Event):
                 flow = self.receiving_node.flow
                 e = PacketAcknowledgementEvent(self.timestamp, self.packet, flow)
                 self.receiving_node.network.event_queue.push(e)
+
+            elif isinstance(self.packet, RoutingPacket):
+
+                for link_id in self.packet.data_dict:
+                    self.receiving_node.known_link_costs[link_id] = self.packet.data_dict[link_id]
+
+                if len(self.receiving_node.network.link_dict) == len(self.receiving_node.known_link_costs) and not self.receiving_node.routing_table_up_to_date:
+
+                    self.receiving_node.update_routing_table()
+                    self.routing_table_up_to_date = True
+
+
 
         else:
             next_link = self.receiving_node.routing_table[self.packet.destination.node_id]
@@ -291,6 +317,9 @@ class Node(object):
         self.routing_table = {}
         self.adjacent_links = []
 
+        self.known_link_costs = {}
+        self.routing_table_up_to_date = False
+
     def update_routing_table(self):
 
         unvisited_nodes = {node_id for node_id in self.network.node_dict}
@@ -309,7 +338,7 @@ class Node(object):
             for link in self.network.node_dict[current_vertex].adjacent_links:
                 adj_node = link.get_other_node(self.network.node_dict[current_vertex])
 
-                distance_through_node = distance_dict[current_vertex] + link.current_cost()
+                distance_through_node = distance_dict[current_vertex] + self.known_link_costs[link.link_id]
 
                 if distance_through_node < distance_dict[adj_node.node_id]:
                     distance_dict[adj_node.node_id] = distance_through_node
@@ -334,6 +363,13 @@ class Node(object):
                 return link
 
         raise ValueError
+
+    def send_routing_packet(self, destination_node, time_sent):
+
+        data_dict = {link.link_id : link.current_cost() for link in self.adjacent_links}
+
+        routing_packet = RoutingPacket("r" + self.node_id + "_" + destination_node.node_id, self, destination_node, time_sent, data_dict)
+        self.network.event_queue.push(ReceivePacketEvent(time_sent, routing_packet, self))
 
 
 class Host(Node):
@@ -417,6 +453,13 @@ class AcknowledgementPacket(Packet):
         self.size = ACK_PACKET_SIZE # All acknowledgement packets have 64 bytes.
         self.ACK = ACK
 
+class RoutingPacket(Packet):
+    """docstring for RoutingPacket."""
+    def __init__(self, packet_id, source, destination, time_sent, data_dict):
+        super(RoutingPacket, self).__init__(packet_id, source, destination)
+        self.size = DATA_PACKET_SIZE
+        self.time_sent = time_sent
+        self.data_dict = data_dict
 
 
 class Flow(object):
