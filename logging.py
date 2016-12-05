@@ -1,137 +1,194 @@
 from network import *
 import numpy
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 import math
 
-def plot_buffer_occupancy(link):
+def plot_buffer_occupancy(links):
   """
-  This function plots available space in a buffer as a function of time.
+  This function plots buffer occupancy as a function of time.
   """
-  timestamps = [tup[0] for tup in link.buffer_occupancy_history]
-  space_values = [tup[1] for tup in link.buffer_occupancy_history]
-  plt.plot(timestamps, space_values)
-  plt.title('%s Buffer Occupancy' % link.link_id)
+
+  colors = cm.rainbow(numpy.linspace(0, 1, len(links)))
+  for link, color in zip(links, colors):
+    timestamps = [tup[0] for tup in link.buffer_occupancy_history]
+    space_values = [tup[1] for tup in link.buffer_occupancy_history]
+    intervals, bucket_values = bucket_average(timestamps, space_values)
+    plt.plot(intervals, [link.buffer_size - val for val in bucket_values], color=color, label=link.link_id)
+  plt.title('Link Buffer Occupancy')
+
   plt.xlabel('time (seconds)')
-  plt.ylabel('available space (bits)')
+  plt.ylabel('utilized space (bits)')
+  plt.legend()
   plt.show()
 
-def plot_packet_loss(link):
+def plot_packet_loss(links):
   """
   This function plots packet loss as a function of time for an input link.
   Each data point is the time at which a packet loss occurred.
   """
-  # determine the scale of the graph
-  timestamps = [tup[0] for tup in link.link_rate_history]
-  max_time = math.ceil(max(timestamps))
 
-  timestamps = link.packets_lost_history
-  packet_loss_values = [tup[0] + 1 for tup in enumerate(link.packets_lost_history)]
+  colors = cm.rainbow(numpy.linspace(0, 1, len(links)))
+  for link, color in zip(links, colors):
+    timestamps = [tup[0] for tup in link.link_rate_history]
+    max_time = math.ceil(max(timestamps))
+    timestamps = link.packets_lost_history
+    packet_loss_values = [tup[0] + 1 for tup in enumerate(link.packets_lost_history)]
+    timestamps.append(max_time)
+    packet_loss_values.append(len(packet_loss_values) + 1)
+    plt.plot(timestamps, packet_loss_values, color=color, label=link.link_id)
 
-  timestamps.append(max_time)
-  packet_loss_values.append(len(packet_loss_values) + 1)
-  plt.plot(timestamps, packet_loss_values)
-  plt.title('%s Packet Loss' % link.link_id)
+  plt.title('Packet Loss')
   plt.xlabel('time (seconds)')
   plt.ylabel('packets lost')
+  plt.legend()
   plt.show()
 
-def plot_link_rate(link):
+def plot_link_rate(links):
   """
   This functions plots the link rate of the input link.
   It calculates link rate by dividing the timeframe into quarter-second
   intervals and plotting the amount of data that was sent in each interval.
   """
-  # determine the scale of the graph
-  timestamps = [tup[0] for tup in link.link_rate_history]
-  max_time = math.ceil(max(timestamps))
 
-  # creates quarter-second intervals
-  intervals = numpy.linspace(0, max_time, max_time * 4)
+  colors = cm.rainbow(numpy.linspace(0, 1, len(links)))
+  for link, color in zip(links, colors):
+    timestamps = [tup[0] for tup in link.link_rate_history]
+    transmission_events = [tup[1] for tup in link.link_rate_history]
+    intervals, link_rate_values = bucket_sum(timestamps, transmission_events)
+    plt.plot(intervals, sliding_window_average(link_rate_values, 0), color=color, label=link.link_id)
 
-  # place each transmission into the appropriate interval
-  flow_rate_values = []
-  idx = 0
-  for i in range(len(intervals)):
-    bytes_sent = 0
-    while idx < len(link.link_rate_history) and link.link_rate_history[idx][0] <= intervals[i]:
-      bytes_sent += link.link_rate_history[idx][1]
-      idx += 1
-
-    flow_rate_values.append(bytes_sent / 0.25)
-
-  # plot the intervals
-  plt.plot(intervals, flow_rate_values)
-  plt.title('%s Link Rate' % link.link_id)
+  plt.title('Link Rate')
   plt.xlabel('time (seconds)')
   plt.ylabel('link rate (bits/sec)')
+  plt.legend()
   plt.show()
 
-def plot_flow_rate(flow):
+def plot_flow_rate(flows):
   """
   This functions plots the flow rate of the input flow.
   It calculates link rate by dividing the timeframe into quarter-second
   intervals and plotting the amount of data that was sent in each interval.
   """
-  timestamps = [tup[0] for tup in flow.flow_rate_history]
-  max_time = math.ceil(max(timestamps))
 
-  # creates quarter-second intervals
-  intervals = numpy.linspace(0, max_time, max_time * 4)
+  colors = cm.rainbow(numpy.linspace(0, 1, len(flows)))
+  for flow, color in zip(flows, colors):
+    timestamps = [tup[0] for tup in flow.flow_rate_history]
+    transmission_events = [tup[1] for tup in flow.flow_rate_history]
+    intervals, flow_rate_values = bucket_sum(timestamps, transmission_events)
+    plt.plot(intervals, flow_rate_values, color=color, label=flow.flow_id)
 
-  # place each transmission into the appropriate interval
-  flow_rate_values = []
-  idx = 0
-  for i in range(len(intervals)):
-    bytes_sent = 0
-    while idx < len(flow.flow_rate_history) and flow.flow_rate_history[idx][0] <= intervals[i]:
-      bytes_sent += flow.flow_rate_history[idx][1]
-      idx += 1
-
-    flow_rate_values.append(bytes_sent / 0.25)
-
-  # plot the intervals
-  plt.plot(intervals, flow_rate_values)
-  plt.title('%s Flow Rate' % flow.flow_id)
+  plt.title('Flow Rate')
   plt.xlabel('time (seconds)')
   plt.ylabel('flow rate (bits/sec)')
+  plt.legend()
   plt.show()
 
-def plot_round_trip_time(flow):
-  send_time_tuples = sorted(flow.pushed_packets.items(), key=lambda x:x[1])
+def plot_round_trip_time(flows):
 
-  max_time = math.ceil(max([tup[1] for tup in send_time_tuples]))
+  colors = cm.rainbow(numpy.linspace(0, 1, len(flows)))
+  for flow, color in zip(flows, colors):
 
-  # creates quarter-second intervals
-  intervals = numpy.linspace(0, max_time, max_time * 4)
+    send_time_tuples = sorted(flow.pushed_packets.items(), key=lambda x:x[1])
+    timestamps = [tup[1] for tup in send_time_tuples]
+    raw_rtts = [flow.round_trip_time_history[tup[0]] for tup in send_time_tuples]
+    intervals, rtt_bucket_values = bucket_average(timestamps, raw_rtts)
+    plt.plot(intervals, rtt_bucket_values, color=color, label=flow.flow_id)
 
-  # place each transmission into the appropriate interval
-  rtt_values = []
-  idx = 0
-  for i in range(len(intervals)):
-    sum = 0
-    count = 0
-    while idx < len(send_time_tuples) and send_time_tuples[idx][1] <= intervals[i]:
-      count += 1
-      sum += flow.round_trip_time_history[send_time_tuples[idx][0]]
-      idx += 1
-
-    if count > 0:
-      rtt_values.append(sum * 1.0 / count)
-    elif idx > 0:
-      rtt_values.append(rtt_values[len(rtt_values) - 1])
-    else:
-      rtt_values.append(0)
-
-  # plot the intervals
-  plt.plot(intervals, rtt_values)
-  plt.title('%s Average Round Trip Time' % flow.flow_id)
+  plt.title('Average Round Trip Time')
   plt.xlabel('time (seconds)')
   plt.ylabel('avg round trip time (secs)')
+  plt.legend()
   plt.show()
 
-def plot_window_size(flow):
-  timestamps = [tup[0] for tup in flow.window_size_history]
-  window_sizes = [tup[1] for tup in flow.window_size_history]
-  plt.title('%s Window Size' % flow.flow_id)
-  plt.plot(timestamps, window_sizes)
+def plot_window_size(flows):
+
+  colors = cm.rainbow(numpy.linspace(0, 1, len(flows)))
+  for flow, color in zip(flows, colors):
+    timestamps = [tup[0] for tup in flow.window_size_history]
+    window_sizes = [tup[1] for tup in flow.window_size_history]
+    intervals, bucket_values = bucket_average(timestamps, window_sizes)
+    plt.plot(intervals, sliding_window_average(bucket_values, 2), color=color, label=flow.flow_id)
+
+  plt.title('Window Size')
+  plt.xlabel('time (seconds)')
+  plt.ylabel('window size (packets)')
+  plt.legend()
   plt.show()
+
+def sliding_window_average(raw, window_size):
+  """
+  This function performs a sliding window average on a set of raw data points.
+  Each input is transformed by averaging it with its n previous neighbors and n subsequent neighbors,
+  where n is the input window size parameter.
+  If the array element is too close to the beginning or end, the first and last element
+  of the array will be given extra weight to account for the missing elements beyond them.
+  :param raw: The raw data to transform (array)
+  :param window_size: The number of neighbors to average over (int)
+  :return: An array of the transformed data.
+  """
+  out = []
+
+  for idx in range(len(raw)):
+    window = range(idx - window_size, idx + window_size + 1)
+    window_values = []
+    for point in window:
+      if point < 0:
+        window_values.append(raw[0])
+      elif point >= len(raw):
+        window_values.append(raw[-1])
+      else:
+        window_values.append(raw[point])
+    out.append(numpy.mean(window_values))
+  return out
+
+def bucket_average(raw_timestamps, raw_data):
+  """
+  This function takes a set of events and corresponding timestamps, and constructs
+  a series of buckets at one-second intervals, placing each event into the appropriate bucket.
+  The output value for each bucket is the average of all the event values in that bucket.
+  :param raw_timestamps: Array of raw timestamps
+  :param raw_data: Array of events occurring at the above timestamps
+  :return: (1) an array of interval values, and (2) an array of averages corresponding to each interval value
+  """
+  max_timestamp = math.ceil(max(raw_timestamps))
+  intervals = numpy.linspace(0, max_timestamp, max_timestamp)
+
+  bucket_values = []
+  idx = 0
+  for interval in intervals:
+    interval_values = []
+    while idx < len(raw_data) and raw_timestamps[idx] <= interval:
+      interval_values.append(raw_data[idx])
+      idx += 1
+
+    if len(interval_values) > 0:
+      bucket_values.append(numpy.mean(interval_values))
+    elif len(bucket_values) > 0:
+      bucket_values.append(bucket_values[-1])
+    else:
+      bucket_values.append(0)
+
+  return intervals, bucket_values
+
+def bucket_sum(raw_timestamps, raw_data):
+  """
+  Identical to the above function, except that each bucket is the sum of its elements instead of the average.
+  """
+  max_timestamp = math.ceil(max(raw_timestamps))
+  intervals = numpy.linspace(0, max_timestamp, max_timestamp)
+
+  bucket_values = []
+  idx = 0
+  for interval in intervals:
+    interval_sum = 0
+    while idx < len(raw_data) and raw_timestamps[idx] <= interval:
+      interval_sum += raw_data[idx]
+      idx += 1
+
+    if interval_sum > 0:
+      bucket_values.append(interval_sum)
+    else:
+      bucket_values.append(0)
+
+  return intervals, bucket_values
