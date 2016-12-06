@@ -37,7 +37,7 @@ def run_test_case_0_lite(congestion_control_algorithm):
 
 
 def run_test_case_0(congestion_control_algorithm):
-    """ """
+    """ Executes a network simulation on the network of test case 0. """
 
     n = Network()
 
@@ -74,6 +74,7 @@ def run_test_case_0(congestion_control_algorithm):
 
 
 def run_test_case_1(congestion_control_algorithm):
+    """ Executes a network simulation on the network of test case 1. """
 
     n = Network()
 
@@ -128,6 +129,7 @@ def run_test_case_1(congestion_control_algorithm):
 
 
 def run_test_case_2(congestion_control_algorithm):
+    """ Executes a network simulation on the network of test case 2. """
 
     n = Network()
 
