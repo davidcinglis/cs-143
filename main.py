@@ -1,6 +1,8 @@
 from network import *
 from logging import *
 
+import sys
+
 
 def run_test_case_0_lite(congestion_control_algorithm):
     """ Executes a network simulation on the network of test case 0, but only using 5000 packets. For debugging purposes. """
@@ -35,7 +37,7 @@ def run_test_case_0_lite(congestion_control_algorithm):
 
 
 def run_test_case_0(congestion_control_algorithm):
-    """ """
+    """ Executes a network simulation on the network of test case 0. """
 
     n = Network()
 
@@ -72,6 +74,7 @@ def run_test_case_0(congestion_control_algorithm):
 
 
 def run_test_case_1(congestion_control_algorithm):
+    """ Executes a network simulation on the network of test case 1. """
 
     n = Network()
 
@@ -126,6 +129,7 @@ def run_test_case_1(congestion_control_algorithm):
 
 
 def run_test_case_2(congestion_control_algorithm):
+    """ Executes a network simulation on the network of test case 2. """
 
     n = Network()
 
@@ -195,5 +199,13 @@ def run_test_case_2(congestion_control_algorithm):
 
 if __name__ == '__main__':
 
-    #run_test_case_2("reno")
-    run_test_case_2("fast")
+    test_case = int(sys.argv[1])
+    congestion_control_algorithm = sys.argv[2]
+
+
+    if test_case == 0:
+        run_test_case_0(congestion_control_algorithm)
+    elif test_case == 1:
+        run_test_case_1(congestion_control_algorithm)
+    elif test_case == 2:
+        run_test_case_2(congestion_control_algorithm)
