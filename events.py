@@ -1,16 +1,17 @@
-
 import heapq
 import network
 
-
-
 class EventQueue(object):
+    """
+    A minimum priority queue used to implement discrete event simulation.
+    """
     def __init__(self):
         self._queue = []
 
     def push(self, event):
         heapq.heappush(self._queue, (event.timestamp, event))
 
+    # pops the event with the smallest timestamp from the queue
     def pop(self):
         return heapq.heappop(self._queue)[1]
 
@@ -18,10 +19,10 @@ class EventQueue(object):
         return len(self._queue) == 0
 
 
-
-
 class Event(object):
-    """docstring for Event."""
+    """
+    Abstract event superclass.
+    """
     def __init__(self, timestamp):
         super(Event, self).__init__()
         self.timestamp = timestamp
@@ -31,41 +32,40 @@ class Event(object):
 
 
 class SendRoutingPacketsEvent(Event):
-    """docstring for SendRoutingPacketsEvent."""
+    """
+    This event tells each node to send packets to each other node with link cost information,
+    which is used for dynamic routing.
+    """
     def __init__(self, timestamp, network):
         super(SendRoutingPacketsEvent, self).__init__(timestamp)
         self.network = network
 
     def handle(self):
 
-        # Schedule the next routing tables update, but only if there are other events on the queue, or this is the first one
+        # Only perform dynamic routing if the simulation is still in progress
         if not self.network.event_queue.is_empty():
+
+            # Queue the next dynamic routing event
             self.network.event_queue.push(SendRoutingPacketsEvent(self.timestamp + 5, self.network))
 
-            for link_id in self.network.link_dict:
-                link = self.network.link_dict[link_id]
-
-            # Update all the routing tables
+            # Send a packet from each node to each other node with cost information for adjacent links
             for node_id_1 in self.network.node_dict:
                 node_1 = self.network.node_dict[node_id_1]
-
                 node_1.known_link_costs = {}
                 node_1.routing_table_up_to_date = False
 
                 for node_id_2 in self.network.node_dict:
                     node_2 = self.network.node_dict[node_id_2]
-
                     node_1.send_routing_packet(node_2, self.timestamp)
 
-
-
     def print_event_description(self):
-        print "Timestamp:", self.timestamp, "Executed an update of routing tables."
-
+        print "Timestamp:", self.timestamp, "Sending out routing packets between nodes."
 
 
 class ReceivePacketEvent(Event):
-    """docstring for ReceivePacketEvent."""
+    """
+    This event occurs when a node receives a packet from an adjacent link.
+    """
     def __init__(self, timestamp, packet, receiving_node):
         super(ReceivePacketEvent, self).__init__(timestamp)
 
@@ -76,6 +76,7 @@ class ReceivePacketEvent(Event):
 
         # if we are at the destination
         if self.packet.destination == self.receiving_node:
+
             # if the packet is a data packet, create an acknowledgement and push an event to receive the acknowledgement
             if isinstance(self.packet, network.DataPacket):
 
@@ -106,10 +107,6 @@ class ReceivePacketEvent(Event):
                 # push an event to receive the ack
                 self.receiving_node.network.event_queue.push(ReceivePacketEvent(self.timestamp, ack, self.receiving_node))
 
-                #print "Received packets:", self.receiving_node.rec_pkts[f_id]
-                #print "Expected packet:", self.receiving_node.next_expected[f_id]
-
-
             # if packet is an ack
             elif isinstance(self.packet, network.AcknowledgementPacket):
 
@@ -117,18 +114,21 @@ class ReceivePacketEvent(Event):
                     e = PacketAcknowledgementEvent(self.timestamp, self.packet, flow)
                     self.receiving_node.network.event_queue.push(e)
 
+            # handler for routing packets
             elif isinstance(self.packet, network.RoutingPacket):
 
+                # add every link cost from the packet to our known costs
                 for link_id in self.packet.data_dict:
                     self.receiving_node.known_link_costs[link_id] = self.packet.data_dict[link_id]
 
-                if len(self.receiving_node.network.link_dict) == len(self.receiving_node.known_link_costs) and not self.receiving_node.routing_table_up_to_date:
+                # if we know all the costs, run Dijkstra's algorithm to update the routing table
+                if len(self.receiving_node.network.link_dict) == len(self.receiving_node.known_link_costs) \
+                        and not self.receiving_node.routing_table_up_to_date:
 
                     self.receiving_node.update_routing_table()
                     self.routing_table_up_to_date = True
 
-
-
+        # If we aren't at the destination, use the routing table to forward the packet on
         else:
             next_link = self.receiving_node.routing_table[self.packet.destination.node_id]
             assert isinstance(next_link, network.Link)
@@ -138,53 +138,54 @@ class ReceivePacketEvent(Event):
 
 
     def print_event_description(self):
-        print "Timestamp:", self.timestamp, "Receiving packet", self.packet.packet_id, "(", self.packet.source.node_id, "->", self.packet.destination.node_id, ")",  "at node", self.receiving_node.node_id
-
+        print "Timestamp:", self.timestamp, "Receiving packet", self.packet.packet_id, "(", \
+            self.packet.source.node_id, "->", self.packet.destination.node_id, ")",  \
+            "at node", self.receiving_node.node_id
 
 
 class EnterBufferEvent(Event):
-    """docstring for EnterBufferEvent."""
+    """
+    This event occurs when a packet enters a link buffer.
+    """
     def __init__(self, timestamp, packet, link, current_node):
         super(EnterBufferEvent, self).__init__(timestamp)
         self.packet = packet
         self.link = link
         self.current_node = current_node
-        if self.link.node_1 == self.current_node:
-            self.next_node = self.link.node_2
-        elif self.link.node_2 == self.current_node:
-            self.next_node = self.link.node_1
-        else:
-            raise ValueError("Node not in link")
-
+        self.next_node = self.link.get_other_node(self.current_node)
 
     def handle(self):
         if self.link.available_space - self.packet.size >= 0:
-            self.link.available_space -= self.packet.size
 
+            self.link.available_space -= self.packet.size
             self.link.buffer_occupancy_history.append((self.timestamp, self.link.available_space))
 
+            # calculate when we can send the packet from the buffer, and create a leave buffer event at that time
+            # then update the next send time to reflect the presence of the new packet
             if self.link.next_send_time == None: # If the buffer is empty
                 send_time = self.timestamp
             else:
                 send_time = max(self.link.next_send_time, self.timestamp)
-
             lbe = LeaveBufferEvent(send_time, self.packet, self.link, self.current_node)
-
             self.link.next_send_time = send_time + float(self.packet.size) / self.link.capacity + self.link.delay
-
             self.link.network.event_queue.push(lbe)
-        else:
 
+        # if the buffer is full, record the packet as lost and ignore it
+        else:
             self.link.packets_lost_history.append(self.timestamp)
 
 
     def print_event_description(self):
-        print "Timestamp:", self.timestamp, "Packet", self.packet.packet_id, "(", self.packet.source.node_id, "->", self.packet.destination.node_id, ")", "entering buffer at node", self.current_node.node_id, "(link", self.link.link_id, ")"
+        print "Timestamp:", self.timestamp, "Packet", self.packet.packet_id, "(", \
+            self.packet.source.node_id, "->", self.packet.destination.node_id, ")", "entering buffer at node", \
+            self.current_node.node_id, "(link", self.link.link_id, ")"
 
 
 
 class LeaveBufferEvent(Event):
-    """docstring for LeaveBufferEvent."""
+    """
+    This event occurs when a packet leaves a buffer.
+    """
 
     def __init__(self, timestamp, packet, link, current_node):
         super(LeaveBufferEvent, self).__init__(timestamp)
@@ -193,30 +194,32 @@ class LeaveBufferEvent(Event):
         self.current_node = current_node
         self.next_node = self.link.get_other_node(self.current_node)
 
-
     def handle(self):
         self.link.available_space += self.packet.size
         self.link.buffer_occupancy_history.append((self.timestamp, self.link.available_space))
         self.link.link_rate_history.append((self.timestamp, self.packet.size))
 
+        # create a receive packet event for the destination node
         rcpe = ReceivePacketEvent(self.timestamp + float(self.packet.size) / self.link.capacity + self.link.delay, self.packet, self.next_node)
-
-
         self.link.network.event_queue.push(rcpe)
 
     def print_event_description(self):
-        print "Timestamp:", self.timestamp, "Packet", self.packet.packet_id, "(", self.packet.source.node_id, "->", self.packet.destination.node_id, ")", "leaving buffer at node", self.current_node.node_id, "(link", self.link.link_id, ")"
-        pass
+        print "Timestamp:", self.timestamp, "Packet", self.packet.packet_id, "(", \
+            self.packet.source.node_id, "->", self.packet.destination.node_id, ")", "leaving buffer at node", \
+            self.current_node.node_id, "(link", self.link.link_id, ")"
 
 
 class PacketAcknowledgementEvent(Event):
-    """docstring for PacketAcknowledgementEvent."""
+    """
+    This event occurs when a packet acknowledgement is received by its source flow.
+    """
     def __init__(self, timestamp, packet, flow):
         super(PacketAcknowledgementEvent, self).__init__(timestamp)
         self.packet = packet
         self.flow = flow
 
     def handle(self):
+        # TODO comment this
         if self.packet.packet_id in self.flow.pushed_packets:
             send_time = self.flow.pushed_packets[self.packet.packet_id]
             round_trip_time = self.timestamp - send_time
@@ -224,6 +227,7 @@ class PacketAcknowledgementEvent(Event):
             if round_trip_time < self.flow.baseRTT:
                 self.flow.baseRTT = round_trip_time
 
+        # handle the ACK with the appropriate congestion control algorithm
         if self.flow.alg_type == "reno":
             self.flow.reno(self.packet, self.timestamp)
         else:
@@ -232,7 +236,12 @@ class PacketAcknowledgementEvent(Event):
     def print_event_description(self):
         print "Timestamp:", self.timestamp, "flow", self.flow.flow_id, "acknowledgement of packet", self.packet.packet_id
 
+
 class TimeoutEvent(Event):
+    """
+    This event is created whenever a packet is sent at TIMEOUT seconds in the future.
+    If a timeout occurs it updates the window size accordingly.
+    """
     def __init__(self, timestamp, packet, flow):
         super(TimeoutEvent, self).__init__(timestamp)
         self.packet = packet
@@ -241,17 +250,15 @@ class TimeoutEvent(Event):
     def handle(self):
         packet_num = int(self.packet.packet_id[3:])
 
-        # if timeout acually happens
+        # check if a timeout has occurred
         if self.packet.packet_id  in self.flow.unacknowledged_packets:
             print "Timestamp:", self.timestamp, "packet_id", self.packet.packet_id, "TIMEOUT OCCURRED"
             del self.flow.unacknowledged_packets[self.packet.packet_id]
-            #self.flow.WINDOW_SIZE = max(self.flow.WINDOW_SIZE / 2.0, 1.0)
 
-            # reset the window size to 1
             self.flow.WINDOW_SIZE = 1
             self.flow.window_size_history.append((self.timestamp, self.flow.WINDOW_SIZE))
             self.THRESHOLD = self.flow.WINDOW_SIZE / 2.0
-            heapq.heappush(self.flow.unpushed, packet_num)
+            heapq.heappush(self.flow.unpushed, packet_num) # queue the packet to be resent
             self.flow.send(self.timestamp)
 
     def print_event_description(self):
