@@ -2,7 +2,7 @@ from network import *
 from logging import *
 
 
-def run_test_case_0_lite():
+def run_test_case_0_lite(congestion_control_algorithm):
     """ Executes a network simulation on the network of test case 0, but only using 5000 packets. For debugging purposes. """
 
     n = Network()
@@ -15,15 +15,9 @@ def run_test_case_0_lite():
 
     # Adds link l1 from h1 to h2. Link has buffer 64 KB, 10 Mbps capacity, 10 ms delay
     n.add_link("l1", h1, h2, 64 * 1000 * 8, 10 * 10**6, 10 * 10**-3)
-    # Adds flow f1 from h1 to h2. Flow has payload 5000 packets, starts at t=1, FAST congestion control.
-    n.add_flow("f1", h1, h2, DATA_PACKET_SIZE * 5000, 1, "fast")
+    # Adds flow f1 from h1 to h2. Flow has payload 5000 packets, starts at t=1.
+    n.add_flow("f1", h1, h2, DATA_PACKET_SIZE * 5000, 1, congestion_control_algorithm)
 
-
-    # # setup the routing table for h1
-    # h1.routing_table["h2"] = n.link_dict["l1"]
-    #
-    # # setup the routing table for h2
-    # h2.routing_table["h1"] = n.link_dict["l1"]
 
     n.event_loop()
 
@@ -40,7 +34,8 @@ def run_test_case_0_lite():
 
 
 
-def run_test_case_0():
+def run_test_case_0(congestion_control_algorithm):
+    """ """
 
     n = Network()
 
@@ -53,7 +48,7 @@ def run_test_case_0():
     # Adds link l1 from h1 to h2. Link has buffer 64 KB, 10 Mbps capacity, 10 ms delay
     n.add_link("l1", h1, h2, 64 * 1000 * 8, 10 * 10**6, 10 * 10**-3)
     # Adds flow f1 from h1 to h2. Flow has payload 20MB, starts at t=1, no congestion control.
-    n.add_flow("f1", h1, h2, 20 * 10**6 * 8, 1, "fast")
+    n.add_flow("f1", h1, h2, 20 * 10**6 * 8, 1, congestion_control_algorithm)
 
 
 
@@ -76,7 +71,7 @@ def run_test_case_0():
 
 
 
-def run_test_case_1():
+def run_test_case_1(congestion_control_algorithm):
 
     n = Network()
 
@@ -113,29 +108,7 @@ def run_test_case_1():
 
 
     # Adds flow f1 from h1 to h2. Flow has payload 20MB, starts at t=0.5.
-    n.add_flow("f1", h1, h2, DATA_PACKET_SIZE * 5000, 0.5, "fast")
-
-    # # setup the routing table for h1
-    # h1.routing_table["h2"] = n.link_dict["l0"]
-    #
-    # # setup the routing table for h2
-    # h2.routing_table["h1"] = n.link_dict["l5"]
-    #
-    # # Setup the routing tables for r1
-    # r1.routing_table["h1"] = n.link_dict["l0"]
-    # r1.routing_table["h2"] = n.link_dict["l1"]
-    #
-    # # Setup the routing tables for r2
-    # r2.routing_table["h1"] = n.link_dict["l1"]
-    # r2.routing_table["h2"] = n.link_dict["l3"]
-    #
-    # # Setup the routing tables for r3
-    # r3.routing_table["h1"] = n.link_dict["l2"]
-    # r3.routing_table["h2"] = n.link_dict["l4"]
-    #
-    # # Setup the routing tables for r4
-    # r4.routing_table["h1"] = n.link_dict["l4"]
-    # r4.routing_table["h2"] = n.link_dict["l5"]
+    n.add_flow("f1", h1, h2, 20 * 10**6 * 8, 0.5, congestion_control_algorithm)
 
     n.event_loop()
 
@@ -152,7 +125,7 @@ def run_test_case_1():
 
 
 
-def run_test_case_2():
+def run_test_case_2(congestion_control_algorithm):
 
     n = Network()
 
@@ -193,14 +166,14 @@ def run_test_case_2():
     n.add_link("l8", r4, t3, 128 * 1000 * 8, 12.5 * 10**6, 10 * 10**-3)
 
 
-    # Adds flow f1. Flow has payload 35MB, starts at t=0.5, no congestion control.
-    n.add_flow("f1", s1, t1, 35 * 10**6 * 8, 0.5, "reno")
+    # Adds flow f1. Flow has payload 35MB, starts at t=0.5.
+    n.add_flow("f1", s1, t1, 35 * 10**6 * 8, 0.5, congestion_control_algorithm)
 
-    # Adds flow f2. Flow has payload 15MB, starts at t=10, no congestion control.
-    n.add_flow("f2", s2, t2, 15 * 10**6 * 8, 10, "reno")
+    # Adds flow f2. Flow has payload 15MB, starts at t=10.
+    n.add_flow("f2", s2, t2, 15 * 10**6 * 8, 10, congestion_control_algorithm)
 
-    # Adds flow f3. Flow has payload 30MB, starts at t=20, no congestion control.
-    n.add_flow("f3", s3, t3, 30 * 10**6 * 8, 20, "reno")
+    # Adds flow f3. Flow has payload 30MB, starts at t=20.
+    n.add_flow("f3", s3, t3, 30 * 10**6 * 8, 20, congestion_control_algorithm)
 
 
 
@@ -221,4 +194,6 @@ def run_test_case_2():
 
 
 if __name__ == '__main__':
-    run_test_case_2()
+
+    #run_test_case_2("reno")
+    run_test_case_2("fast")
