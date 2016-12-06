@@ -3,6 +3,7 @@ from logging import *
 
 
 def run_test_case_0_lite():
+    """ Executes a network simulation on the network of test case 0, but only using 5000 packets. For debugging purposes. """
 
     n = Network()
 
@@ -14,27 +15,28 @@ def run_test_case_0_lite():
 
     # Adds link l1 from h1 to h2. Link has buffer 64 KB, 10 Mbps capacity, 10 ms delay
     n.add_link("l1", h1, h2, 64 * 1000 * 8, 10 * 10**6, 10 * 10**-3)
-    # Adds flow f1 from h1 to h2. Flow has payload 5000 packets, starts at t=1, no congestion control.
-    n.add_flow("f1", h1, h2, DATA_PACKET_SIZE * 20000, 1, "fast")
+    # Adds flow f1 from h1 to h2. Flow has payload 5000 packets, starts at t=1, FAST congestion control.
+    n.add_flow("f1", h1, h2, DATA_PACKET_SIZE * 5000, 1, "fast")
 
 
-    # setup the routing table for h1
-    h1.routing_table["h2"] = n.link_dict["l1"]
-
-    # setup the routing table for h2
-    h2.routing_table["h1"] = n.link_dict["l1"]
+    # # setup the routing table for h1
+    # h1.routing_table["h2"] = n.link_dict["l1"]
+    #
+    # # setup the routing table for h2
+    # h2.routing_table["h1"] = n.link_dict["l1"]
 
     n.event_loop()
 
-    for flow in n.flow_dict:
-        plot_window_size(n.flow_dict[flow])
-        plot_flow_rate(n.flow_dict[flow])
-        plot_round_trip_time(n.flow_dict[flow])
+    links = [n.link_dict[link_id] for link_id in n.link_dict]
+    flows = [n.flow_dict[flow_id] for flow_id in n.flow_dict]
 
-    for link in n.link_dict:
-        plot_buffer_occupancy(n.link_dict[link])
-        plot_packet_loss(n.link_dict[link])
-        plot_link_rate(n.link_dict[link])
+    plot_link_rate(links)
+    plot_buffer_occupancy(links)
+    plot_packet_loss(links)
+
+    plot_flow_rate(flows)
+    plot_window_size(flows)
+    plot_round_trip_time(flows)
 
 
 
@@ -54,23 +56,26 @@ def run_test_case_0():
     n.add_flow("f1", h1, h2, 20 * 10**6 * 8, 1, "fast")
 
 
-    # setup the routing table for h1
-    h1.routing_table["h2"] = n.link_dict["l1"]
-
-    # setup the routing table for h2
-    h2.routing_table["h1"] = n.link_dict["l1"]
 
     n.event_loop()
 
-    for flow in n.flow_dict:
-        plot_window_size(n.flow_dict[flow])
-        plot_flow_rate(n.flow_dict[flow])
-        plot_round_trip_time(n.flow_dict[flow])
 
-    for link in n.link_dict:
-        plot_buffer_occupancy(n.link_dict[link])
-        plot_packet_loss(n.link_dict[link])
-        plot_link_rate(n.link_dict[link])
+
+
+    links = [n.link_dict[link_id] for link_id in n.link_dict]
+    flows = [n.flow_dict[flow_id] for flow_id in n.flow_dict]
+
+    plot_link_rate(links)
+    plot_buffer_occupancy(links)
+    plot_packet_loss(links)
+
+    plot_flow_rate(flows)
+    plot_window_size(flows)
+    plot_round_trip_time(flows)
+
+
+
+
 def run_test_case_1():
 
     n = Network()
@@ -110,27 +115,27 @@ def run_test_case_1():
     # Adds flow f1 from h1 to h2. Flow has payload 20MB, starts at t=0.5.
     n.add_flow("f1", h1, h2, DATA_PACKET_SIZE * 5000, 0.5, "fast")
 
-    # setup the routing table for h1
-    h1.routing_table["h2"] = n.link_dict["l0"]
-
-    # setup the routing table for h2
-    h2.routing_table["h1"] = n.link_dict["l5"]
-
-    # Setup the routing tables for r1
-    r1.routing_table["h1"] = n.link_dict["l0"]
-    r1.routing_table["h2"] = n.link_dict["l1"]
-
-    # Setup the routing tables for r2
-    r2.routing_table["h1"] = n.link_dict["l1"]
-    r2.routing_table["h2"] = n.link_dict["l3"]
-
-    # Setup the routing tables for r3
-    r3.routing_table["h1"] = n.link_dict["l2"]
-    r3.routing_table["h2"] = n.link_dict["l4"]
-
-    # Setup the routing tables for r4
-    r4.routing_table["h1"] = n.link_dict["l4"]
-    r4.routing_table["h2"] = n.link_dict["l5"]
+    # # setup the routing table for h1
+    # h1.routing_table["h2"] = n.link_dict["l0"]
+    #
+    # # setup the routing table for h2
+    # h2.routing_table["h1"] = n.link_dict["l5"]
+    #
+    # # Setup the routing tables for r1
+    # r1.routing_table["h1"] = n.link_dict["l0"]
+    # r1.routing_table["h2"] = n.link_dict["l1"]
+    #
+    # # Setup the routing tables for r2
+    # r2.routing_table["h1"] = n.link_dict["l1"]
+    # r2.routing_table["h2"] = n.link_dict["l3"]
+    #
+    # # Setup the routing tables for r3
+    # r3.routing_table["h1"] = n.link_dict["l2"]
+    # r3.routing_table["h2"] = n.link_dict["l4"]
+    #
+    # # Setup the routing tables for r4
+    # r4.routing_table["h1"] = n.link_dict["l4"]
+    # r4.routing_table["h2"] = n.link_dict["l5"]
 
     n.event_loop()
 
@@ -144,17 +149,7 @@ def run_test_case_1():
     plot_flow_rate(flows)
     plot_window_size(flows)
     plot_round_trip_time(flows)
-    '''
-    for flow in n.flow_dict:
-        plot_flow_rate(n.flow_dict[flow])
-        plot_window_size(n.flow_dict[flow])
-        plot_round_trip_time(n.flow_dict[flow])
 
-    for link in n.link_dict:
-        plot_packet_loss(n.link_dict[link])
-        plot_link_rate(n.link_dict[link])
-        plot_buffer_occupancy(n.link_dict[link])
-'''
 
 
 def run_test_case_2():
@@ -209,23 +204,21 @@ def run_test_case_2():
 
 
 
-    # Setup the routing tables for the routers
-
-
     n.event_loop()
 
-    for flow in n.flow_dict:
-        plot_flow_rate(n.flow_dict[flow])
-        plot_window_size(n.flow_dict[flow])
-        plot_round_trip_time(n.flow_dict[flow])
+    links = [n.link_dict[link_id] for link_id in n.link_dict]
+    flows = [n.flow_dict[flow_id] for flow_id in n.flow_dict]
 
-    for link in n.link_dict:
-        plot_packet_loss(n.link_dict[link])
-        plot_link_rate(n.link_dict[link])
-        plot_buffer_occupancy(n.link_dict[link])
+    plot_link_rate(links)
+    plot_buffer_occupancy(links)
+    plot_packet_loss(links)
+
+    plot_flow_rate(flows)
+    plot_window_size(flows)
+    plot_round_trip_time(flows)
 
 
 
 
 if __name__ == '__main__':
-    run_test_case_1()
+    run_test_case_2()
