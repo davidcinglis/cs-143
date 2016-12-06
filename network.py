@@ -10,13 +10,17 @@ TIMEOUT = 20
 BIG = 10**20
 
 class Network(object):
-    """docstring for Network."""
+    """Network object for the simulation. This object contains dicts which keep track of all the nodes, links and flows in the network. It also has an event queue and an event loop method to execute the simulation."""
 
     def __init__(self):
         super(Network, self).__init__()
+
+        # Dicts of all the objects in the network, indexed by their id string
         self.node_dict = dict()
         self.link_dict = dict()
         self.flow_dict = dict()
+
+        # TODO what is this
         self.ack_dict = dict()
 
         self.active_flows = 1
@@ -25,14 +29,22 @@ class Network(object):
 
 
     def add_node(self, node):
+        """ Method to add a node to a network. """
         self.node_dict[node.node_id] = node
         node.network = self
 
     def add_link(self, link_id, node_1, node_2, buffer_size, capacity, delay):
+        """ Method to add a link between two nodes in the network. """
+        assert node_1.node_id in self.node_dict and self.node_dict[node_1.node_id] == node_1
+        assert node_2.node_id in self.node_dict and self.node_dict[node_2.node_id] == node_2
         self.link_dict[link_id] = Link(link_id, node_1, node_2, buffer_size, capacity, delay)
         self.link_dict[link_id].network = self
 
     def add_flow(self, flow_id, source_host, destination_host, payload_size, start_time, congestion_control_algorithm):
+        """ Method to add a flow between two nodes in the network. """
+        assert source_host.node_id in self.node_dict and self.node_dict[source_host.node_id] == source_host
+        assert destination_host.node_id in self.node_dict and self.node_dict[destination_host.node_id] == destination_host
+
         self.flow_dict[flow_id] = Flow(flow_id, source_host, destination_host, payload_size, start_time, congestion_control_algorithm)
         source_host.flow = self.flow_dict[flow_id]
         self.flow_dict[flow_id].network = self
@@ -40,15 +52,19 @@ class Network(object):
         self.flow_dict[flow_id].setup()
 
     def event_loop(self):
+        """ This method starts the event loop, which executes the simulation and runs until the network is no longer sending packets. """
 
+        # Before we start, set up the routing tables of the nodes by telling them every link in the network has cost 1.
         for node_id in self.node_dict:
             node = self.node_dict[node_id]
             node.known_link_costs = {link_id : 1 for link_id in self.link_dict}
             node.update_routing_table()
 
+        # Schedule a routing update for 5 seconds into the simulation
         self.event_queue.push(SendRoutingPacketsEvent(5, self))
         self.active_flows = len(self.flow_dict)
 
+        # Run the event loop until the simulation ends.
         while not self.event_queue.is_empty():
             event = self.event_queue.pop()
             # ensure correct simulation of delay
@@ -60,17 +76,22 @@ class Network(object):
 
 
 class Node(object):
-    """docstring for Node."""
+    """A Node Object, which is used as a superclass for Hosts and Routers."""
     def __init__(self, node_id):
         super(Node, self).__init__()
         self.node_id = node_id
         self.routing_table = {}
         self.adjacent_links = []
 
+        # For updating the routing table. These represent what the node knows
+        # about the other links during an update.
         self.known_link_costs = {}
         self.routing_table_up_to_date = False
 
     def update_routing_table(self):
+        """ This method uses the dict of known link costs (for the whole
+        network) to construct a new routing table with Dijkstra's algorithm.
+        """
 
         unvisited_nodes = {node_id for node_id in self.network.node_dict}
         distance_dict = {node_id : BIG for node_id in self.network.node_dict}
@@ -108,6 +129,7 @@ class Node(object):
 
 
     def get_link_from_node_id(self, adjacent_node_id):
+        """ Method to get the link corresponding to an adjacent node to this node. """
         for link in self.adjacent_links:
             if link.get_other_node(self).node_id == adjacent_node_id:
                 return link
@@ -115,6 +137,9 @@ class Node(object):
         raise ValueError
 
     def send_routing_packet(self, destination_node, time_sent):
+        """ This method causes a Node to send a routing table packet to a
+        certain destination. The routing table packet contains the current
+        costs of adjacent links. """
 
         data_dict = {link.link_id : link.current_cost() for link in self.adjacent_links}
 
@@ -123,7 +148,7 @@ class Node(object):
 
 
 class Host(Node):
-    """docstring for Host."""
+    """ Host class, subclass of Node."""
     def __init__(self, node_id):
         super(Host, self).__init__(node_id)
 
@@ -133,7 +158,7 @@ class Host(Node):
 
 
 class Router(Node):
-    """docstring for Router."""
+    """Router class, subclass of Node."""
     def __init__(self, node_id):
         super(Router, self).__init__(node_id)
 
@@ -141,7 +166,7 @@ class Router(Node):
 
 
 class Link(object):
-    """docstring for Link."""
+    """Link object for attaching adjcent nodes."""
     def __init__(self, link_id, node_1, node_2, buffer_size, capacity, delay):
         super(Link, self).__init__()
         self.link_id = link_id
@@ -158,17 +183,20 @@ class Link(object):
         # Dict from times to amount of information sent at that time
         self.link_rate_history = []
 
+        # The next time that this Link will be available to send a packet.
         self.next_send_time = None
+
+        # The total size of the buffer in bits.
         self.buffer_size = buffer_size
-
-
+        # The bandwith capacity, in bits per second, of this link.
         self.capacity = capacity
+        # The current amount of available space of the buffer in bits.
         self.available_space = buffer_size
-
+        # The transmission delay of this link.
         self.delay = delay
 
     def get_other_node(self, node):
-
+        """ A method to get the other node of this link, given one. """
         if self.node_1 == node:
             return self.node_2
         elif self.node_2 == node:
@@ -177,11 +205,14 @@ class Link(object):
             raise ValueError("Node not in link")
 
     def current_cost(self):
+        """ A method which computes the cost of traversing this link, computed
+        from the amount of data in the buffer and the capacity of the link.
+        Used for the cost in the shortest path routing algorithm. """
         return float(self.buffer_size - self.available_space)/self.capacity
 
 
 class Packet(object):
-    """docstring for Packet."""
+    """ Packet object. """
     def __init__(self, packet_id, source, destination):
         super(Packet, self).__init__()
         self.source = source
@@ -190,21 +221,23 @@ class Packet(object):
 
 
 class DataPacket(Packet):
-    """docstring for DataPacket."""
+    """ Subclass of Packet for packets which represent host-to-host payload
+    comunication."""
     def __init__(self, packet_id, source, destination):
         super(DataPacket, self).__init__(packet_id, source, destination)
         self.size = DATA_PACKET_SIZE # All data packets have 1024 bytes
 
 
 class AcknowledgementPacket(Packet):
-    """docstring for AcknowledgementPacket."""
+    """ Subclass of Packet for acknowledgement packets."""
     def __init__(self, packet_id, source, destination, ACK):
         super(AcknowledgementPacket, self).__init__(packet_id, source, destination)
         self.size = ACK_PACKET_SIZE # All acknowledgement packets have 64 bytes.
         self.ACK = ACK
 
 class RoutingPacket(Packet):
-    """docstring for RoutingPacket."""
+    """ Subclass of packet for inter-router communication of link costs for
+    routing table updates."""
     def __init__(self, packet_id, source, destination, time_sent, data_dict):
         super(RoutingPacket, self).__init__(packet_id, source, destination)
         self.size = DATA_PACKET_SIZE
@@ -213,7 +246,7 @@ class RoutingPacket(Packet):
 
 
 class Flow(object):
-    """docstring for Flow."""
+    """ Class to represent data flows."""
     def __init__(self, flow_id, source_host, destination_host, payload_size, start_time, congestion_control_algorithm):
         super(Flow, self).__init__()
         self.flow_id = flow_id
