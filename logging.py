@@ -14,7 +14,9 @@ def plot_buffer_occupancy(links):
     timestamps = [tup[0] for tup in link.buffer_occupancy_history]
     space_values = [tup[1] for tup in link.buffer_occupancy_history]
     intervals, bucket_values = bucket_average(timestamps, space_values)
-    plt.plot(intervals, [link.buffer_size - val for val in bucket_values], color=color, label=link.link_id)
+    bucket_values = [link.buffer_size - val for val in bucket_values]
+    smoothed_values = sliding_window_average(bucket_values, 10)
+    plt.plot(intervals, smoothed_values, color=color, label=link.link_id)
   plt.title('Link Buffer Occupancy')
 
   plt.xlabel('time (seconds)')
@@ -56,7 +58,7 @@ def plot_link_rate(links):
     timestamps = [tup[0] for tup in link.link_rate_history]
     transmission_events = [tup[1] for tup in link.link_rate_history]
     intervals, link_rate_values = bucket_sum(timestamps, transmission_events)
-    plt.plot(intervals, sliding_window_average(link_rate_values, 0), color=color, label=link.link_id)
+    plt.plot(intervals, sliding_window_average(link_rate_values, 10), color=color, label=link.link_id)
 
   plt.title('Link Rate')
   plt.xlabel('time (seconds)')
@@ -76,7 +78,8 @@ def plot_flow_rate(flows):
     timestamps = [tup[0] for tup in flow.flow_rate_history]
     transmission_events = [tup[1] for tup in flow.flow_rate_history]
     intervals, flow_rate_values = bucket_sum(timestamps, transmission_events)
-    plt.plot(intervals, flow_rate_values, color=color, label=flow.flow_id)
+    smoothed_values = sliding_window_average(flow_rate_values, 10)
+    plt.plot(intervals, smoothed_values, color=color, label=flow.flow_id)
 
   plt.title('Flow Rate')
   plt.xlabel('time (seconds)')
@@ -93,7 +96,8 @@ def plot_round_trip_time(flows):
     timestamps = [tup[1] for tup in send_time_tuples]
     raw_rtts = [flow.round_trip_time_history[tup[0]] for tup in send_time_tuples]
     intervals, rtt_bucket_values = bucket_average(timestamps, raw_rtts)
-    plt.plot(intervals, rtt_bucket_values, color=color, label=flow.flow_id)
+    smoothed_values = sliding_window_average(rtt_bucket_values, 10)
+    plt.plot(intervals, smoothed_values, color=color, label=flow.flow_id)
 
   plt.title('Average Round Trip Time')
   plt.xlabel('time (seconds)')
@@ -108,7 +112,7 @@ def plot_window_size(flows):
     timestamps = [tup[0] for tup in flow.window_size_history]
     window_sizes = [tup[1] for tup in flow.window_size_history]
     intervals, bucket_values = bucket_average(timestamps, window_sizes)
-    plt.plot(intervals, sliding_window_average(bucket_values, 2), color=color, label=flow.flow_id)
+    plt.plot(intervals, sliding_window_average(bucket_values, 10), color=color, label=flow.flow_id)
 
   plt.title('Window Size')
   plt.xlabel('time (seconds)')
