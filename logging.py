@@ -94,7 +94,8 @@ def plot_round_trip_time(flows):
 
     send_time_tuples = sorted(flow.pushed_packets.items(), key=lambda x:x[1])
     timestamps = [tup[1] for tup in send_time_tuples]
-    raw_rtts = [flow.round_trip_time_history[tup[0]] for tup in send_time_tuples]
+    raw_rtts = [flow.round_trip_time_history[tup[0]] for tup in send_time_tuples
+                if tup[0] in flow.round_trip_time_history]
     intervals, rtt_bucket_values = bucket_average(timestamps, raw_rtts)
     smoothed_values = sliding_window_average(rtt_bucket_values, 10)
     plt.plot(intervals, smoothed_values, color=color, label=flow.flow_id)
