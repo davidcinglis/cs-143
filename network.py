@@ -6,7 +6,6 @@ from events import *
 DATA_PACKET_SIZE = 1024 * 8
 ACK_PACKET_SIZE = 64 * 8
 TIMEOUT = 20
-#WINDOW_SIZE = 20
 BIG = 10**20
 
 class Network(object):
