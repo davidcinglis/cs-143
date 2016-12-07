@@ -370,10 +370,10 @@ class Flow(object):
             self.WINDOW_SIZE = min(2 * w, (1 - self.gamma) * w + self.gamma * ((self.baseRTT / curr_rtt) * w + self.alpha))
             self.window_size_history.append((current_time, self.WINDOW_SIZE))
 
-        self.send(current_time)
+        self.send(current_time, False)
 
     # This method sends packets 
-    def send(self, execution_time):
+    def send(self, execution_time, timeout = True):
         self.unpushed.sort(reverse = True)
         # while there the number of packets in transit does not reach the window size and 
         # there are packets to send
@@ -385,9 +385,11 @@ class Flow(object):
             self.pushed_packets[packet_id] = execution_time
             packet = DataPacket(packet_id, self.source_host, self.destination_host)
             self.flow_rate_history.append((execution_time, DATA_PACKET_SIZE))
-            # send packets and timeout events
+            # send packets and timeout event (if tcp reno)
             self.network.event_queue.push(ReceivePacketEvent(execution_time, packet, self.source_host))
-            self.network.event_queue.push(TimeoutEvent(execution_time + TIMEOUT, packet, self))
+
+            if timeout:
+                self.network.event_queue.push(TimeoutEvent(execution_time + TIMEOUT, packet, self))
 
 
     def setup(self):
