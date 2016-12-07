@@ -115,8 +115,8 @@ def run_test_case_1(congestion_control_algorithm):
 
     n.event_loop()
 
-    links = [n.link_dict[link_id] for link_id in n.link_dict]
-    flows = [n.flow_dict[flow_id] for flow_id in n.flow_dict]
+    links = [n.link_dict["l1"], n.link_dict["l2"]]
+    flows = [n.flow_dict["f1"]]
 
     plot_link_rate(links)
     plot_buffer_occupancy(links)
@@ -183,8 +183,8 @@ def run_test_case_2(congestion_control_algorithm):
 
     n.event_loop()
 
-    links = [n.link_dict[link_id] for link_id in n.link_dict]
-    flows = [n.flow_dict[flow_id] for flow_id in n.flow_dict]
+    links = [n.link_dict["l1"], n.link_dict["l2"], n.link_dict["l3"]]
+    flows = [n.flow_dict["f1"], n.flow_dict["f2"], n.flow_dict["f3"]]
 
     plot_link_rate(links)
     plot_buffer_occupancy(links)
