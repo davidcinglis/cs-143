@@ -376,7 +376,7 @@ class Flow(object):
     def send(self, execution_time, timeout = True):
         self.unpushed.sort(reverse = True)
         # while there the number of packets in transit does not reach the window size and 
-        # there are packets to send
+        # there are packets to send, sontinue to send packets
         while (len(self.unacknowledged_packets) < self.WINDOW_SIZE) and self.unpushed:
             execution_time += .00000001
             packet_num = self.unpushed.pop()
@@ -388,6 +388,7 @@ class Flow(object):
             # send packets and timeout event (if tcp reno)
             self.network.event_queue.push(ReceivePacketEvent(execution_time, packet, self.source_host))
 
+            # if tcp fast, push a timeout event
             if timeout:
                 self.network.event_queue.push(TimeoutEvent(execution_time + TIMEOUT, packet, self))
 
@@ -400,4 +401,8 @@ class Flow(object):
 
             heapq.heappush(self.unpushed, packet_id)
 
-        self.send(self.start_time)
+        if self.alg_type == "reno":
+            self.send(self.start_time)
+        # dont add timeout events in tcp fast
+        else:
+            self.send(self.start_time, False)
