@@ -254,12 +254,13 @@ class TimeoutEvent(Event):
         if self.packet.packet_id  in self.flow.unacknowledged_packets:
             print "Timestamp:", self.timestamp, "packet_id", self.packet.packet_id, "TIMEOUT OCCURRED"
             del self.flow.unacknowledged_packets[self.packet.packet_id]
-
+            # reset window size to 1
             self.flow.WINDOW_SIZE = 1
+            # reset threshold to 1
+            self.THRESHOLD = 1
             self.flow.window_size_history.append((self.timestamp, self.flow.WINDOW_SIZE))
-            self.THRESHOLD = self.flow.WINDOW_SIZE / 2.0
             heapq.heappush(self.flow.unpushed, packet_num) # queue the packet to be resent
-            self.flow.send(self.timestamp)
+            self.flow.send(self.timestamp) 
 
     def print_event_description(self):
         print "Timestamp:", self.timestamp, "flow", self.flow.flow_id, "checking timeout for packet", self.packet.packet_id

@@ -6,7 +6,6 @@ from events import *
 DATA_PACKET_SIZE = 1024 * 8
 ACK_PACKET_SIZE = 64 * 8
 TIMEOUT = 20
-#WINDOW_SIZE = 20
 BIG = 10**20
 
 class Network(object):
@@ -19,9 +18,6 @@ class Network(object):
         self.node_dict = dict()
         self.link_dict = dict()
         self.flow_dict = dict()
-
-        # TODO what is this
-        self.ack_dict = dict()
 
         self.active_flows = 1
 
@@ -70,8 +66,6 @@ class Network(object):
             # ensure correct simulation of delay
             event.print_event_description()
             event.handle()
-
-
 
 
 
@@ -258,33 +252,53 @@ class Flow(object):
 
         self.payload_size = payload_size
         self.start_time = start_time
-        self.pushed_packets = {} # never delete from this
-        self.unacknowledged_packets = {} # map from packet_ids to the times at which they were sent
-        #self.acknowledged_packets = {} # map fromr packet_ids to # of times they have been acknowledged
+        # Packets that are in transit, never delete from this, used to calculate round trip time
+        # Map from psuhed packet ids to time they were pushed
+        self.pushed_packets = {} 
+        # packets in transit, map from packet_ids to the times at which they were sent, used in 
+        # congestion control
+        self.unacknowledged_packets = {} 
+        # Packets that need to be sent to source host
         self.unpushed = []
-        self.flow_rate_history = [] # an array of timestamp, bytes_sent tuples
+        # an array of timestamp, bytes_sent tuples, used to plot
+        self.flow_rate_history = [] 
+        # initialize window size to 20
         self.WINDOW_SIZE = 20
+        # initialize threshold to 50, used in TCP Reno
         self.THRESHOLD = 500
+        # array hold ids of last 3 acknowledgments
         self.prev_ack = [-1, -1, -1]
+        # initialize minimum round trip time to a large value
         self.baseRTT = 1000
+        # array contains changing values of window size, used to plot
         self.window_size_history = []
+        # type of congestion control algorithm
         self.alg_type = congestion_control_algorithm
+        # number of packets to be sent and received
         self.num_packets = self.payload_size / DATA_PACKET_SIZE
+        # initialize gamma and alpha for TCP Fast
+        self.gamma = 0.5
+        self.alpha = 15
 
-
+    # This method updates the window size accordingly if a successful ack occurrs in 
+    # the slow start phase.
     def slow_start(self):
         self.WINDOW_SIZE += 1
         return self.WINDOW_SIZE
 
+    # Tis method updates the window size accordingly if a successful ack occurrs in 
+    # the congestion avoidance phase
     def cong_avoid(self):
         self.WINDOW_SIZE += 1 / self.WINDOW_SIZE
         return self.WINDOW_SIZE
 
-
+    # this method implements the TCP Reno congestion control algorithm
     def reno(self, packet, current_time):
 
-        num_packets = self.payload_size / DATA_PACKET_SIZE
-
+        # delete any packet with pcket id less than current one from 
+        # unacknowledged packets dictionary since we assume 
+        # all packets with id less than current have also been
+        # acknowledged
         temp_unack = self.unacknowledged_packets.keys()
         for p in temp_unack:
             if int(p[3:]) < int(packet.ACK[3:]):
@@ -298,14 +312,17 @@ class Flow(object):
 
         # if triple ack occurs
         if self.prev_ack[0] == self.prev_ack[1] and self.prev_ack[1] == self.prev_ack[2]:
-            # cut threshold to half
+            # cut threshold to half of current window size
             self.THRESHOLD = self.WINDOW_SIZE / 2
+            # halve window size
             self.WINDOW_SIZE = max(self.WINDOW_SIZE / 2.0, 1.0)
             self.window_size_history.append((current_time, self.WINDOW_SIZE))
             current_time += .01
-            if int(packet.ACK[3:]) < num_packets and int(packet.ACK[3:]) not in self.unpushed:
+            # resend lost packet
+            if int(packet.ACK[3:]) < self.num_packets and int(packet.ACK[3:]) not in self.unpushed:
                 heapq.heappush(self.unpushed, int(packet.ACK[3:]))
 
+        # if successful ack occurrs, update window size accordingly
         else:
             if self.WINDOW_SIZE <= self.THRESHOLD:
                 self.window_size_history.append((current_time, self.slow_start()))
@@ -315,8 +332,12 @@ class Flow(object):
 
         self.send(current_time)
 
-
+    # this method implements the TCP Reno congestion control algorithm
     def fast(self, packet, current_time):
+        # delete any packet with pcket id less than current one from 
+        # unacknowledged packets dictionary since we assume 
+        # all packets with id less than current have also been
+        # acknowledged
         temp_unack = self.unacknowledged_packets.keys()
         for p in temp_unack:
             if int(p[3:]) < int(packet.ACK[3:]):
@@ -330,27 +351,31 @@ class Flow(object):
 
         # if duplicate ack occurs
         if self.prev_ack[1] == self.prev_ack[2]:
+            # halve window size
             self.WINDOW_SIZE = max(self.WINDOW_SIZE / 2.0, 1.0)
             self.window_size_history.append((current_time, self.WINDOW_SIZE))
             current_time += .01
+            # resend lost packet
             if int(packet.ACK[3:]) < self.num_packets and int(packet.ACK[3:]) not in self.unpushed:
                 heapq.heappush(self.unpushed, int(packet.ACK[3:]))
 
+        # if a successful ack occurs
         elif int(packet.ACK[3:]) < self.num_packets:
             curr_rtt = self.round_trip_time_history[packet.packet_id]
+            # update minimum round trip time
             self.baseRTT = min(self.baseRTT, curr_rtt)
-            gamma = 0.5
-            alpha = 15
             w = self.WINDOW_SIZE
-            self.WINDOW_SIZE = min(2 * w, (1 - gamma) * w + gamma * ((self.baseRTT / curr_rtt) * w + alpha))
-            #self.WINDOW_SIZE = 1
+            # update window size accordingly
+            self.WINDOW_SIZE = min(2 * w, (1 - self.gamma) * w + self.gamma * ((self.baseRTT / curr_rtt) * w + self.alpha))
             self.window_size_history.append((current_time, self.WINDOW_SIZE))
 
-        self.send(current_time)
+        self.send(current_time, False)
 
-    def send(self, execution_time):
+    # This method sends packets 
+    def send(self, execution_time, timeout = True):
         self.unpushed.sort(reverse = True)
-
+        # while there the number of packets in transit does not reach the window size and 
+        # there are packets to send, sontinue to send packets
         while (len(self.unacknowledged_packets) < self.WINDOW_SIZE) and self.unpushed:
             execution_time += .00000001
             packet_num = self.unpushed.pop()
@@ -359,8 +384,12 @@ class Flow(object):
             self.pushed_packets[packet_id] = execution_time
             packet = DataPacket(packet_id, self.source_host, self.destination_host)
             self.flow_rate_history.append((execution_time, DATA_PACKET_SIZE))
+            # send packets and timeout event (if tcp reno)
             self.network.event_queue.push(ReceivePacketEvent(execution_time, packet, self.source_host))
-            self.network.event_queue.push(TimeoutEvent(execution_time + TIMEOUT, packet, self))
+
+            # if tcp fast, push a timeout event
+            if timeout:
+                self.network.event_queue.push(TimeoutEvent(execution_time + TIMEOUT, packet, self))
 
 
     def setup(self):
@@ -371,4 +400,8 @@ class Flow(object):
 
             heapq.heappush(self.unpushed, packet_id)
 
-        self.send(self.start_time)
+        if self.alg_type == "reno":
+            self.send(self.start_time)
+        # dont add timeout events in tcp fast
+        else:
+            self.send(self.start_time, False)
