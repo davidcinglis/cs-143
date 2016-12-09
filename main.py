@@ -201,7 +201,15 @@ if __name__ == '__main__':
 
     test_case = int(sys.argv[1])
     congestion_control_algorithm = sys.argv[2]
+    allowed_strings = ["reno", "fast"]
+    test_cases = [0, 1, 2]
 
+    if congestion_control_algorithm not in allowed_strings:
+        print "congestion control algorithm must be one of the following:", allowed_strings
+        exit(1)
+    if test_case not in test_cases:
+        print "test case must be one of the following:", test_cases
+        exit(1)
 
     if test_case == 0:
         run_test_case_0(congestion_control_algorithm)

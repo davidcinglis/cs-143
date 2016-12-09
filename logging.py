@@ -32,13 +32,17 @@ def plot_packet_loss(links):
 
   colors = cm.rainbow(numpy.linspace(0, 1, len(links)))
   for link, color in zip(links, colors):
-    timestamps = [tup[0] for tup in link.link_rate_history]
-    max_time = math.ceil(max(timestamps))
+
+    # need to calculate the max timestamp from link rate to handle the case with no packet loss
+    max_time = max([tup[0] for tup in link.link_rate_history])
     timestamps = link.packets_lost_history
-    packet_loss_values = [tup[0] + 1 for tup in enumerate(link.packets_lost_history)]
+    values = [1 for event in link.packets_lost_history]
+
+    # add a dummy value so we're guaranteed to have something in the arry
     timestamps.append(max_time)
-    packet_loss_values.append(len(packet_loss_values) + 1)
-    plt.plot(timestamps, packet_loss_values, color=color, label=link.link_id)
+    values.append(0)
+    bucket_timestamps, bucket_values = bucket_sum(timestamps, values)
+    plt.plot(bucket_timestamps, bucket_values, color=color, label=link.link_id)
 
   plt.title('Packet Loss')
   plt.xlabel('time (seconds)')
